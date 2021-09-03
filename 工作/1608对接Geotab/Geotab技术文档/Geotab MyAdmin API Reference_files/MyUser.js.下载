@@ -1,0 +1,931 @@
+﻿var usersAdmin = function ($container, onComplete) {
+    gmsLogonV2('Reseller,INTERNAL', function (userStore) {
+        var user = userStore.activeUser();
+        var translationStore = userStore.getTranslationStore();
+        var sessionId = userStore.sessionId;
+        var $user = $container.find('#user');
+        var $toolbar = $container.find('#toolbar');
+        var $resultsDiv = $container.find('#results');
+        var $accountList = function () {
+            return $toolbar.find('#accountList');
+        };
+        var allRoles = userStore.allRoles();
+
+        var displayArray = function (array, displayMember) {
+            var results = '';
+            if (!array || array.length == 0) {
+                return '';
+            }
+            if (!displayMember) {
+                displayMember = 'name';
+            }
+            for (var i = 0; i < array.length; i++) {
+                if (array[i]['isActive'] == undefined || array[i]['isActive'].length == 0 || array[i]['isActive']) {
+                    results += (results.length > 0 ? ', ' : '') + array[i][displayMember].replace('_', ' ');
+                }
+            }
+            return results;
+        };
+
+        var accountOnHold = function (array) {
+            if (array) {
+                for (var x = 0; x < array.length; x++) {
+                    if (array[x]['onHold'] === true) {
+                        return true;
+                    }
+                }
+            }            
+            return false;
+        };
+
+        function getUser(email, onSuccess, onError) {
+            gmsApiCall({
+                method: "GetUser",
+                params: {
+                    email: email,
+                    sessionId: sessionId
+                },
+                success: function (result) {
+                    if (onSuccess) {
+                        onSuccess(result);
+                    }
+                },
+                error: function (error) {
+                    if (onError) {
+                        onError(parseError(error));
+                    }
+                }
+            });
+        }
+
+        function userAdmin(userToUpdate, onSuccess, onError) {
+            gmsApiCall({
+                method: "UserAdmin",
+                params: {
+                    user: userToUpdate,
+                    sessionId: sessionId
+                },
+                success: function () {
+                    if (onSuccess) {
+                        onSuccess();
+                    }
+                },
+                error: function (error) {
+                    if (onError) {
+                        onError(parseError(error));
+                    }
+                }
+            });
+        }
+
+        // Role Assignment Form
+        function editUser(userToUpdate, onChange, onCancel) {
+            $('#userAdminDlg22').remove();
+            getUser(userToUpdate.name, function (fullUser) {
+                    var currentRoles = fullUser.roles;
+
+                    function setSelectedText() {
+                        var $dlg = $('#userAdminDlg22');
+                        $dlg.find('input.role').each(function () {
+                            var text = $(this).next().text().replace('User Allowed To ', '').replace('User Cannot ', '');
+                            text = (isChecked($(this)) ? 'User Allowed To ' : 'User Cannot ') + text;
+                            $("label[for='" + $(this).attr('id') + "']").text(text);
+                        });
+                        var $isActiveOption = $dlg.find('#isActive');
+                        if ($isActiveOption.length == 1) {
+                            $isActiveOption.next().text(isChecked($isActiveOption) ? translationStore.getString("User is Active") : translationStore.getString("User is INACTIVE"));
+                        }
+                        var $isLockedOutOption = $dlg.find('#unlockUser');
+                        if ($isLockedOutOption.length == 1) {
+                            $isLockedOutOption.next().text(isChecked($isLockedOutOption) ? translationStore.getString("User is LOCKED OUT") : translationStore.getString("User is Unlocked"));
+                        }
+                    }
+
+                    var getRoleFromId = function (rolesToCheck, roleId) {
+                        if (!rolesToCheck || rolesToCheck.length == 0) {
+                            return null;
+                        }
+                        for (var i = 0; i < rolesToCheck.length; i++) {
+                            if (rolesToCheck[i].id == roleId) {
+                                return rolesToCheck[i];
+                            }
+                        }
+                        return null;
+                    };
+                    var getCheckedRoles = function (existingRoles) {
+                        var roles = existingRoles;
+                        $('#userAdminDlg22').find('input.role').each(function (index, value) {
+                            if (isChecked($(value))) {
+                                var roleId = parseInt($(value).attr('id').replace('_cb', ''));
+                                var thisRole = getRoleFromId(allRoles, roleId);
+                                thisRole.comments = '';
+                                var existingRole = getRoleFromId(roles, roleId);
+                                if (existingRole == null) {
+                                    if (roles == null) {
+                                        roles = new Array(thisRole);
+                                    } else {
+                                        roles.push(thisRole);
+                                    }
+                                }
+                            } else {
+                                var roleId = parseInt($(value).attr('id').replace('_cb', ''));
+                                if (existingRoles != null) {
+                                    for (var i = 0; i < existingRoles.length; i++) {
+                                        if (existingRoles[i].id == roleId) {
+                                            roles.remove(existingRoles[i]);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                        return roles.length == 0 ? null : roles;
+                    };
+
+                    var h = [];
+                    $container.append('<div id="userAdminDlg22"></div>');
+                    h.push('<div id="userAdminDlg22">');
+                    h.push('<h3>' + translationStore.getString('General Info') + '</h3>');
+                    h.push('<ul class="grid padded">');
+                    h.push('<li class="column1">' + translationStore.getString('User Name') + ':</li>');
+                    h.push('<li class="column2">' + userToUpdate.name + '</li>');
+                    h.push('<li class="column1">' + translationStore.getString('Created on') + ':</li>');
+                    h.push('<li class="column2">' + MyTools.DateTime.DbDateTo.shortDateString(userToUpdate['createDate']) + '</li>');
+                    if (userToUpdate['lastLoginDate'] != null) {
+                        h.push('<li class="column1">' + translationStore.getString('Last Logged in') + ':</li>');
+                        h.push('<li class="column2">' + MyTools.DateTime.DbDateTo.shortDateTimeString(userToUpdate['lastLoginDate']) + '</li>');
+                    }
+                    h.push('<li class="column1">' + translationStore.getString('Current Accounts') + ':</li>');
+                    h.push('<li class="column2">' + userToUpdate.accounts + '</li>');
+                    h.push('</ul>');
+                    h.push('<h3>' + translationStore.getString('Current Status for') + ' ' + userToUpdate.name + '</h3>');
+                    h.push('<ul class="grid padded">');
+                    h.push('<li class="column1">' + translationStore.getString('User Active State') + ':</li>');
+                    var isActiveChecked = userToUpdate.isActive == "true" ? ' checked' : '';
+                    h.push('<li class="column2"><input class="status" type="checkbox" id="isActive"' + isActiveChecked + ' /><label class="Role align-center padded" style="width: 150px;" for="isActive">' + translationStore.getString('User is Active') + '</label></li>');
+                    if (userToUpdate.isLockedOut == "true") {
+                        h.push('<li class="column1">' + translationStore.getString('Lock State') + ':</li>');
+                        h.push('<li class="column2"><input class="status" type="checkbox" id="unlockUser" checked /><label class="Role align-center padded" style="width: 150px;" for="unlockUser">' + translationStore.getString('User is LOCKED OUT') + '</label></li>');
+                    }
+                    h.push('</ul>');
+                    // Roles
+                    h.push('<h3>' + translationStore.getString('User Roles for') + ' ' + userToUpdate.name + '</h3>');
+                    h.push('<div style="font-size: 0.9em;">');
+                    h.push('<ul id="roleOptions" class="grid padded">');
+                    for (var i = 0; i < user.roles.length; i++) {
+                        var role = user.roles[i];
+                        var hideCode = "";
+                        if (!role['isActive']) {
+                            hideCode = ' style="display: none;"';
+                        }
+                        var checkState = getRoleFromId(currentRoles, role.id) ? ' checked' : '';
+                        var checkId = role.id + '_cb';
+                        h.push('<li' + hideCode + '><input class="role" type="checkbox" id="' + checkId + '"' + checkState + '/>' +
+                            '<label class="role align-center padded" style="width: 95%;" for="' + checkId + '">' + role.comments + '</label>' +
+                            '</li>');
+                    }
+                    h.push('</ul>');
+                    var $ua = $container.find('#userAdminDlg22');
+                    $ua.append(h.join(''));
+                    $ua.find('input').button().on("click", function () {
+                        setSelectedText();
+                    });
+                    setSelectedText();
+                    $ua['dialog']({
+                        title: translationStore.getString('User Administration'),
+                        buttons: [
+                            {
+                                text:translationStore.getString('OK'),
+                                click: function () {
+                                    fullUser.roles = getCheckedRoles(fullUser.roles);
+                                    fullUser['isActive'] = isChecked($ua.find('#isActive'));
+                                    if ($ua.find('#unlockUser').length > 0) {
+                                        fullUser['isLockedOut'] = isChecked($ua.find('#unlockUser'));
+                                    }
+                                    $(this).dialog("close");
+                                    userAdmin(fullUser, function () {
+                                        if (onChange) {
+                                            onChange();
+                                        }
+                                    },
+                                        function (error) {
+                                            $.popupMessage(1, error, '');
+                                        });
+                                }
+                            },
+                            {
+                                text:translationStore.getString('Cancel'),
+                                click: function () {
+                                    $(this).dialog("close");
+                                    if (onCancel) {
+                                        onCancel();
+                                    }
+                                }
+                            }
+                        ],
+                        close: function (event, ui) {
+                            $(this).detach();
+                        },
+                        width: 550
+                    }).show();
+                },
+                function (error) {
+                    $.popupMessage(1, error);
+                });
+        }
+
+        // Get User Data
+        function getUsers(showInactive, onSuccess, onFailure) {
+            var account = $accountList().erpAccount(userStore);
+            gmsApiCall({
+                method: "GetUsers",
+                params: {
+                    id: -1,
+                    emailAddress: '',
+                    accountIdFilter: (account == null ? -1 : account.id),
+                    roleIdFilter: -1,
+                    isApproved: null,
+                    isActive: showInactive ? null : true,
+                    isLockedOut: null,
+                    isReseller: null,
+                    sessionId: sessionId
+                },
+                success: function (result) {
+                    var uiResult = [];
+                    for (var i = 0; i < result.length; i++) {
+                        var u = result[i];
+                        var s = (!u.isActive ? 'Disabled' : (!u.isApproved ? translationStore.getString('Pending Approval') : (u.isLockedOut ? translationStore.getString('Locked Out') : translationStore.getString('Active'))));
+                        uiResult.push({
+                            id: u.id,
+                            name: u.name,
+                            accounts: displayArray(u.accounts, 'accountId'),
+                            isActiveDisplay: u.isActive ? translationStore.getString("Yes") : translationStore.getString("No"),
+                            isActive: u.isActive,
+                            isApprovedDisplay: u.isApproved ? translationStore.getString("Yes") : translationStore.getString("No"),
+                            isApproved: u.isApproved,
+                            isLockedOutDisplay: u.isLockedOut ? translationStore.getString("Yes") : translationStore.getString("No"),
+                            isLockedOut: u.isLockedOut,
+                            status: s,
+                            lastLoginDate: MyTools.DateTime.toDate(u['lastLogonDate']),
+                            roles: displayArray(u.roles),
+                            createDate: MyTools.DateTime.toDate(u['createDate'])
+                        });
+                    }
+                    if (onSuccess) {
+                        onSuccess(uiResult);
+                    }
+
+                },
+                error: function (error) {
+                    if (onFailure) {
+                        onFailure(error);
+                    }
+                }
+            });
+        }
+
+        // Load Admin Toolbar
+        function loadToolbar(onComplete) {
+            $toolbar.addClass('toolbar');
+            var h = [];
+            h.push('<span id="accountList" />&nbsp;');
+            h.push('<input id="MyUser_showDisabledUsersButton" type="checkbox" value="' + translationStore.getString('Show Disabled Users') + '" /><label for="MyUser_showDisabledUsersButton">' + translationStore.getString('Show Disabled Users') + '</label>&nbsp;');
+            h.push('<input id="editUserButton" type="button" value="' + translationStore.getString('Edit') + '" />');
+            h.push('&nbsp;|&nbsp;<a id=myUser_HelpLinkId" href="help.html?lang=' + translationStore.getLang() + '&link=accountadmin" target="_blank" rel="noopener noreferrer">' + translationStore.getString('Help') + '</a></span>');
+            $toolbar.html(h.join(''));
+            $accountList().erpList(userStore, {onChanged: function () {
+                loadUserList('');
+            }});
+            $toolbar.find('#editUserButton').button().on("click", function () {
+                var $table = $resultsDiv.find('#data');
+                var u = $table.getRowData($table.getGridParam("selrow"));
+                if (!u || !u.name) {
+                    return;
+                }
+                if ($.trim(u.lastLoginDate).length === 0) {
+                    u.lastLoginDate = null;
+                }
+                editUser(u, function () {
+                    loadUserList('');
+                }, '');
+            });
+            $toolbar.find('#MyUser_showDisabledUsersButton').button().on("click", function () {
+                loadUserList('');
+            });
+            $toolbar.find('a').button();
+            if (onComplete) {
+                onComplete();
+            }
+        }
+
+        function loadAdToolbar(onComplete) {
+            MyTools.Users.Ui.addAdminToolbar($('#adToolbar'), user, sessionId, function () {
+                if (onComplete) {
+                    onComplete();
+                }
+            });
+        }
+
+        function submitAccessApproval($owner, approveAccess, updateTable) {
+            $owner.mask(translationStore.getString('Please wait...'));
+            var $table = $owner.find('#adApprovalTableData');
+            var u = $table.getRowData($table.getGridParam("selrow"));
+            if (!u || !u.userName) {
+                if ($owner.isMasked()) {
+                    $owner.unmask();
+                }
+                $.popupMessage(1, 'Please select a row', '');
+                return;
+            }
+
+            var id = parseInt(u.id);
+            var comment = $('#adUserAdmin_accessApprovalComment').val();
+            MyTools.Users.approveElevatedAdUserAccess(sessionId, id, approveAccess, comment, function () {
+                if ($owner.isMasked()) {
+                    $owner.unmask();
+                }
+                $.popupMessage(3, 'Your access has been successfully updated', '');
+                updateTable();
+            },
+            function (error) {
+                if ($owner.isMasked()) {
+                    $owner.unmask();
+                }
+                $.popupMessage(1, parseError(error), '');
+            });
+        }
+
+        function loadAdApprovalTable(onComplete) {
+            if (!userStore.isUserAllowed(user, ['GMS_ServerOps'], false)) {
+                if (onComplete) {
+                    onComplete();
+                }
+                return;
+            }
+
+            var $owner = $('#adApprovalTable');
+            $owner.empty();
+            var h = [];
+            h.push('<div id="adApprovalToolbar" class="toolbar">');
+            h.push('<span>Approve selected access:&nbsp</span>');
+            h.push('&nbsp; Comment: &nbsp;<input id="adUserAdmin_accessApprovalComment" type="text" />');
+            h.push('<input id="adUserAdmin_approveAccessButton" type="button" value="Approve Access"/>');
+            h.push('<input id="adUserAdmin_denyAccessButton" type="button" value="Deny Access"/>');
+            h.push('</div>');
+            h.push('<div id="adApprovalDataDiv"></div>');
+            $owner.append(h.join(''));
+
+            $owner.find('#adUserAdmin_approveAccessButton').button({ disabled: true });
+            $owner.find('#adUserAdmin_denyAccessButton').button({ disabled: true });
+
+            $owner.find('#adUserAdmin_approveAccessButton').button().on("click", function () {
+                submitAccessApproval($owner, true, updateTable);
+            });
+            $owner.find('#adUserAdmin_denyAccessButton').button().on("click", function () {
+                submitAccessApproval($owner, false, updateTable);
+            });
+
+            function callback(returnedRows) {
+                if (!returnedRows) {
+                    $('#adApprovalToolbar').hide();
+                } else {
+                    $('#adApprovalToolbar').show();
+                }
+                if (onComplete) {
+                    onComplete();
+                }
+                return;
+            }
+
+            function updateTable() {
+                var $tableDiv = $owner.find('#adApprovalDataDiv');
+                $tableDiv.mask(translationStore.getString('Please Wait...'));
+                MyTools.Users.getAdUserGroups(sessionId, null, null, true, true, function (results) {
+                    $owner.hidden = true;
+                    var $tableDiv = $owner.find('#adApprovalDataDiv');
+                    $tableDiv.empty();
+                    $tableDiv.append('<table id="adApprovalTableData"></table>')
+
+                    var $table = $owner.find('#adApprovalTableData');
+
+                    $table.empty();
+
+                    if (!results || results.length == 0) {
+                        callback(false);
+                        return;
+                    }
+
+                    function gridOptions(jsonData) {
+                        for (var i = 0; i < jsonData.length; i++) {
+                            jsonData[i].adGroupId = jsonData[i].adGroup.id;
+                            jsonData[i].adminAdGroup = jsonData[i].adGroup.adminAdGroup;
+                            jsonData[i].activeDateLocal = new Date(jsonData[i].activeDate);
+                            jsonData[i].expireDateLocal = new Date(jsonData[i].expireDate);
+                        }
+                        return {
+                            data: jsonData,
+                            datatype: 'local',
+                            rowNum: 999,
+                            rownumbers: true,
+                            shrinkToFit: false,
+                            autowidth: true,
+                            caption: 'Pending Access Requests',
+                            colNames: ['ID', translationStore.getString('User Name'), 'adGroupId', translationStore.getString('Group Name'), translationStore.getString('Expiry Date'), translationStore.getString('Comments')],
+                            colModel: [
+                                { name: 'id', index: 'id', hidden: true },
+                                { name: 'userName', index: 'userName', width: 220, sorttype: 'text' },
+                                { name: 'adGroupId', index: 'adGroupId', hidden: true },
+                                { name: 'resolvedGroupName', index: 'resolvedGroupName', width: 220, sorttype: 'text' },
+                                {
+                                    name: 'expireDateLocal', index: 'expireDate', width: 140, sorttype: 'date', datefmt: 'date', formatter: 'date', formatoptions:
+                                      {
+                                          newformat: "Y-m-d H:i:s"
+                                      }
+                                },
+                                { name: 'comments', index: 'comments', width: 280, sorttype: 'text' }
+                            ],
+                            sortname: 'resolvedGroupName',
+                            onSelectRow: function (rowId) {
+                                $owner.find('#adUserAdmin_approveAccessButton').button({ disabled: !rowId || rowId < 1 });
+                                $owner.find('#adUserAdmin_denyAccessButton').button({ disabled: !rowId || rowId < 1 });
+                            },
+                            gridComplete: function () {
+
+                            }
+                        };
+                    }
+                    $table.jqGrid(gridOptions(results)).jqGrid('setGridWidth', 950).jqGrid('setGridHeight', '100%');
+                    if ($tableDiv.isMasked()) {
+                        $tableDiv.unmask();
+                    }
+                    $owner.hidden = false;
+                    callback(true);
+                }, function () {
+                    callback(false);
+                });
+            }
+
+            $('#adApprovalToolbar').hide();
+            updateTable();
+        }
+
+        function loadAdTable(onComplete) {
+            if (!userStore.isUserAllowed(user, 'INTERNAL', true)) {
+                if (onComplete) {
+                    onComplete();
+                }
+                return;
+            }
+            var $owner = $('#adTable');
+            $owner.empty();
+
+            var h = [];
+            h.push('<div id="adTableToolbar" class="toolbar">');
+            h.push('<span>' + translationStore.getString("Extend Active Directory Access") + ':&nbsp</span>');
+            h.push('<select id="adUserAdmin_extendHoursSelect"></select>');
+            h.push('<span>&nbsp&nbsp</span>');
+            h.push('<input id="adUserAdmin_extendHoursButton" type="button" value="' + translationStore.getString("Extend Access") + '" />');
+            h.push('&nbsp;Reason for Admin: &nbsp;<input id="adUserAdmin_requestAdminReason" type="text" placeholder="Admin Reason" />')
+            h.push('<input id="adUserAdmin_requestAdminButton" type="button" value="Request Admin" />');
+            h.push('</div>');
+            h.push('<div id="adTableDataDiv"></div>');
+            $owner.append(h.join(''));
+
+            var hrs = [];
+            for (var j = 1; j < 7; j++) {
+                hrs.push('<option value="' + j + '">' + j + ' hour(s)</option>');
+            }
+            var $hr = $('#adUserAdmin_extendHoursSelect');
+            $hr.html(hrs.join(''));
+
+            $owner.find('#adUserAdmin_requestAdminButton').button({ disabled: true });
+            $owner.find('#adUserAdmin_requestAdminButton').button().on("click", function () {
+                $owner.mask(translationStore.getString('Please wait...'));
+                var $table = $owner.find('#adTableData');
+                var u = $table.getRowData($table.getGridParam("selrow"));
+                if (!u || !u.userName) {
+                    if ($owner.isMasked()) {
+                        $owner.unmask();
+                    }
+                    $.popupMessage(1, 'Please select a row', '');
+                    return;
+                }
+
+                var un = u.userName;
+                var gpId = parseInt(u.adGroupId);
+
+                if (gpId === 0) {
+                    $.popupMessage(1, 'Cannot find group', '');
+                    return;
+                }
+
+                var hrs = parseInt($hr.val());
+                var cmts = $('#adUserAdmin_requestAdminReason').val();
+                var id = parseInt(u.id);
+                MyTools.Users.requestElevatedAdUserAccess(sessionId, hrs, cmts, id, function () {
+                    if ($owner.isMasked()) {
+                        $owner.unmask();
+                    }
+                    $.popupMessage(3, 'Your access has been successfully updated', '');
+                    updateTable();
+                },
+                    function (error) {
+                        if ($owner.isMasked()) {
+                            $owner.unmask();
+                        }
+                        $.popupMessage(1, parseError(error), '');
+                    })
+            });
+
+
+            $owner.find('#adUserAdmin_extendHoursButton').button({ disabled: true });
+
+            $owner.find('#adUserAdmin_extendHoursButton').button().on("click", function () {
+                $owner.mask(translationStore.getString('Please wait...'));
+                var $table = $owner.find('#adTableData');
+                var u = $table.getRowData($table.getGridParam("selrow"));
+                if (!u || !u.userName) {
+                    if ($owner.isMasked()) {
+                        $owner.unmask();
+                    }
+                    $.popupMessage(1, 'Please select a row', '');
+                    return;
+                }
+
+                var un = u.userName;
+                var gpId = parseInt(u.adGroupId);
+
+                if (gpId === 0) {
+                    $.popupMessage(1, 'Cannot find group', '');
+                    return;
+                }
+
+                var hrs = parseInt($hr.val());
+                var cmts = u.comments;
+                var id = parseInt(u.id);
+                MyTools.Users.updateAdUserGroup(sessionId, gpId, hrs, function () {
+                    if ($owner.isMasked()) {
+                        $owner.unmask();
+                    }
+                    $.popupMessage(3, 'Your access has been successfully updated', '');
+                    updateTable();
+                },
+                    function (error) {
+                        if ($owner.isMasked()) {
+                            $owner.unmask();
+                        }
+                        $.popupMessage(1, parseError(error), '');
+                    })
+            });
+
+            function callback(returnedRows) {
+                if (!returnedRows) {
+                    $('#adTableToolbar').hide();
+                } else {
+                    $('#adTableToolbar').show();
+                }
+                if (onComplete) {
+                    onComplete();
+                }
+                return;
+            }
+
+            function updateTable() {
+                var $tableDiv = $owner.find('#adTableDataDiv');
+                $tableDiv.mask(translationStore.getString('Please Wait...'));
+                MyTools.Users.getAdUserGroups(sessionId, null, user.id, true, false, function (results) {
+                    $owner.hidden = true;
+                    var $tableDiv = $owner.find('#adTableDataDiv');
+                    $tableDiv.empty();
+                    $tableDiv.append('<table id="adTableData"></table>')
+
+                    var $table = $owner.find('#adTableData');
+
+                    $table.empty();
+
+                    if (!results || results.length == 0) {
+                        callback(false);
+                        return;
+                    }
+
+                    function gridOptions(jsonData) {
+                        for (var i = 0; i < jsonData.length; i++) {
+                            jsonData[i].adGroupId = jsonData[i].adGroup.id;
+                            jsonData[i].adminAdGroup = jsonData[i].adGroup.adminAdGroup;
+                            jsonData[i].activeDateLocal = new Date(jsonData[i].activeDate);
+                            jsonData[i].expireDateLocal = new Date(jsonData[i].expireDate);
+                        }
+                        return {
+                            data: jsonData,
+                            datatype: 'local',
+                            rowNum: 999,
+                            rownumbers: true,
+                            shrinkToFit: false,
+                            autowidth: true,
+                            caption: translationStore.getString("Current Access"),
+                            colNames: ['ID', translationStore.getString('User Name'), 'adGroupId', translationStore.getString('Group Name'), translationStore.getString('Expiry Date'), translationStore.getString('Comments'), 'elevatedGroupId'],
+                            colModel: [
+                                { name: 'id', index: 'id', hidden: true },
+                                { name: 'userName', index: 'userName', width: 220, sorttype: 'text' },
+                                { name: 'adGroupId', index: 'adGroupId', hidden: true },
+                                { name: 'resolvedGroupName', index: 'resolvedGroupName', width: 220, sorttype: 'text' },
+                                {
+                                    name: 'expireDateLocal', index: 'expireDate', width: 140, sorttype: 'date', datefmt: 'date', formatter: 'date', formatoptions:
+                                      {
+                                          newformat: "Y-m-d H:i:s"
+                                      }
+                                },
+                                { name: 'comments', index: 'comments', width: 280, sorttype: 'text' },
+                                { name: 'adminAdGroup', index: 'adminAdGroup', hidden: true }
+                            ],
+                            sortname: 'resolvedGroupName',
+                            onSelectRow: function (rowId) {
+                                var $table = $owner.find('#adTableData');
+                                var u = $table.getRowData(rowId);
+                                $owner.find('#adUserAdmin_extendHoursButton').button({ disabled: !rowId || rowId < 1 });
+                                $owner.find('#adUserAdmin_requestAdminButton').button({ disabled: !rowId || rowId < 1 || !u.adminAdGroup });
+                            },
+                            gridComplete: function () {
+
+                            }
+                        };
+                    }
+                    $table.jqGrid(gridOptions(results)).jqGrid('setGridWidth', 950).jqGrid('setGridHeight', '100%');
+                    if ($tableDiv.isMasked()) {
+                        $tableDiv.unmask();
+                    }
+                    $owner.hidden = false;
+                    callback(true);
+                }, function () {
+                    // not authorised, don't add in toolbar
+                    callback(false);
+                });
+            }
+
+            $('#adTableToolbar').hide();
+            updateTable();
+        }
+
+        // Load Full User List
+        function loadUserList(onComplete) {
+            $toolbar.find('#editUserButton').button({disabled: true});
+            if (!$accountList().erpAccount(userStore)) {
+                if (onComplete) {
+                    onComplete();
+                }
+                return;
+            }
+            $resultsDiv.empty();
+            $resultsDiv.html('<table id="data"></table>');
+            var $table = $resultsDiv.find('#data');
+            var showInactive = $toolbar.find('#MyUser_showDisabledUsersButton').is(':checked');
+            getUsers(showInactive, function (results) {
+                function gridOptions(jsonData) {
+                    return {
+                        data: jsonData,
+                        datatype: 'local',
+                        rowNum: 9999,
+                        rownumbers: true,
+                        shrinkToFit: false,
+                        autowidth: true,
+                        caption: translationStore.getString("Users"),
+                        colNames: ['ID', translationStore.getString('User Name'), translationStore.getString('Accounts'), translationStore.getString('Active'), translationStore.getString('Approved'),
+                            translationStore.getString('Locked Out'), translationStore.getString('Last Login'), translationStore.getString('Roles'), 'Create Date', 'IsActive', 'IsApproved', 'IsLockedOut'],
+                        colModel: [
+                            { name: 'id', index: 'id', hidden: true },
+                            { name: 'name', index: 'name', width: 220, sorttype: 'text' },
+                            { name: 'accounts', index: 'accounts', width: 220, sorttype: 'text' },
+                            { name: 'isActiveDisplay', index: 'isActiveDisplay', width: 70, align: 'center' },
+                            { name: 'isApprovedDisplay', index: 'isApprovedDisplay', width: 70, align: 'center' },
+                            { name: 'isLockedOutDisplay', index: 'isLockedOutDisplay', width: 70, align: 'center' },
+                            { name: 'lastLoginDate', index: 'lastLoginDate', width: 140, sorttype: 'date', datefmt: 'date', formatter: 'date', formatoptions: {srcformat: 'Y-m-d H:i:sZ', newformat: "Y-m-d H:i:s"} },
+                            { name: 'roles', index: 'roles', width: 900, sorttype: 'text' },
+                            { name: 'createDate', index: 'createDate', hidden: true, sorttype: 'date', datefmt: 'date', formatter: 'date', formatoptions: {srcformat: 'Y-m-d H:i:sZ', newformat: "Y-m-d"} },
+                            { name: 'isActive', index: 'isActive', hidden: true },
+                            { name: 'isApproved', index: 'isApproved', hidden: true },
+                            { name: 'isLockedOut', index: 'isLockedOut', hidden: true }
+                        ],
+                        sortname: 'name',
+                        onSelectRow: function (rowId) {
+                            $toolbar.find('#editUserButton').button({ disabled: !rowId || rowId < 1 });
+                            var rowItem = $table.getRowData(rowId);
+                            if (rowItem.roles == 'SALES User') {
+                                $toolbar.find('#editUserButton').button({ disabled: true });
+                            }
+                        },
+                        gridComplete: function () {
+                            var data = $table.getRowData();
+                            for (var i = 0; i < data.length; i++) {
+                                var key = data[i]['id'];
+                                var isActive = MyTools.parseBool($table.getCell(key, 'isActive'));
+                                if (!isActive) {
+                                    $table.jqGrid('setRowData', key, false, {'color': '#fff', 'background': '#929292'});
+                                }
+                                else {
+                                    $table.setCell(key, 'isActiveDisplay', '', 'gms-table-box good no-radius');
+                                    $table.setCell(key, 'isLockedOutDisplay', '', (MyTools.parseBool($table.getCell(key, 'isLockedOut')) ? 'gms-table-box warning no-radius' : 'gms-table-box good no-radius'));
+                                    $table.setCell(key, 'isApprovedDisplay', '', (MyTools.parseBool($table.getCell(key, 'isApproved')) ? 'gms-table-box good no-radius' : 'gms-table-box bad no-radius'));
+                                }
+                            }
+                        }
+                    };
+                }
+                $table.jqGrid(gridOptions(results)).jqGrid('setGridWidth', $resultsDiv.width() - 20).jqGrid('setGridHeight', '100%');
+                /*$(window).on('resize', function () {
+                 if ($resultsDiv.width() > 0) {
+                 $table.jqGrid('setGridWidth', $resultsDiv.width()-20);
+                 }
+                 });*/
+                if ($container.isMasked()) {
+                    $container.unmask();
+                }
+                if (onComplete) {
+                    onComplete();
+                }
+            }, function (error) {
+                if ($container.isMasked()) {
+                    $container.unmask();
+                }
+            });
+        }
+
+        // Load User Profile Info
+        function loadUserProfile(onComplete) {
+            var h = [];
+            h.push('<h3 style="padding-top: 0.4em;">' + translationStore.getString('User Profile') + '</h3>');
+            h.push('<ul class="auto-grid">');
+            h.push('<li>' + translationStore.getString('Current User') + ':</li>');
+            h.push('<li>' + user.name + '</li>');
+            h.push('<li>' + translationStore.getString('Created on') + ':</li>');
+            h.push('<li>' + MyTools.DateTime.DbDateTo.shortDateString(user['createDate']) + '</li>');
+            h.push('<li>' + translationStore.getString('Last Logged in') + ':</li>');
+            h.push('<li>' + MyTools.DateTime.DbDateTo.shortDateTimeString(user['lastLogonDate']) + '</li>');
+            h.push('<li>' + translationStore.getString('Current Accounts') + ':</li>');           
+            if (!(typeof user.accounts === 'undefined')) {
+                h.push('<li>' + displayArray(user.accounts, 'accountId') + '</li>');
+            }
+            else {
+                h.push('<li>' +translationStore.getString('None')+ '</li>');
+            }
+            if (!(typeof user.accounts === 'undefined')) {
+                h.push('<li>' + translationStore.getString('Default Account') + ':</li>')
+                h.push('<li ><select id="defaultAccountSelect">')
+                var newDefaultAccountId = 0;
+                if (typeof user.defaultAccountId === 'undefined') {
+                    h.push('<option value="0" selected="selected">' + translationStore.getString('No Default') + '</option>');
+                }
+                else {
+                    newDefaultAccountId = user.defaultAccountId;
+                }
+                for (var i = 0; i < user.accounts.length; i++) {
+                    if (user.accounts[i].id == newDefaultAccountId) {
+                        h.push('<option value="' + user.accounts[i].id + '" selected="selected">' + user.accounts[i].accountId + '</option>')
+                    }
+                    else {
+                        h.push('<option value="' + user.accounts[i].id + '">' + user.accounts[i].accountId + '</option>')
+                    }
+                }
+                h.push('</select>')
+                h.push('&nbsp;<input id="editDefaultAccountButton" type="button" value="' + translationStore.getString('Change Default') + '" />');
+                h.push('</li>');
+            }
+            h.push('<li>' + translationStore.getString('Account on Hold') + ':</li>');
+            if (!(typeof user.accounts === 'undefined')) {
+                var onHold = accountOnHold(user.accounts);
+                if (onHold === true) {
+                    h.push('<li class="red">' + translationStore.getString('Account is on hold. Ordering is not possible. Please contact AR@geotab.com for further details') + '</li>');
+                }
+                else {
+                    h.push('<li>' + translationStore.getString('None') + '</li>');
+                }
+            }
+            else {
+                h.push('<li>' + translationStore.getString('None') + '</li>');
+            }
+            h.push('<li>' + translationStore.getString('Current Roles') + ':</li>');
+            h.push('<li>' + displayArray(user.roles, 'name') + '</li>');
+            h.push('<li>' + translationStore.getString('Tasks') + ':</li>');
+            h.push('<li><a id="forgotPasswordLink" href="#">' + translationStore.getString('Change My Password') + '</a></li>');
+            h.push('<li>' + translationStore.getString('Language') + ':</li>');
+            h.push('<li><div id="langSelect"></div></li>');
+            h.push('</ul>');
+            h.push('<div id="users_AgreementsDiv"></div>');
+            $user.html(h.join(''));
+
+            translationStore.addLangSelect($("#langSelect"),$("#drop"));
+            
+            $("#forgotPasswordLink").on("click", function () {
+                top.location.href = 'https://myadmin.geotab.com';
+            });
+
+            $('#defaultAccountSelect').on("change", function () {
+                var newDefaultId = $("#defaultAccountSelect option:selected").val()
+                var currentDefault = 0;
+                if (!(typeof user.defaultAccountId === 'undefined')) {
+                    currentDefault = user.defaultAccountId;
+                }
+
+                if (newDefaultId != currentDefault) {
+                    $('#editDefaultAccountButton').button({ disabled: false });
+                }
+                else {
+                    $('#editDefaultAccountButton').button({ disabled: true });
+                }
+            })
+            $('#editDefaultAccountButton').button({ disabled: true });
+            $('#editDefaultAccountButton').on("click", function () {
+                var newDefaultId = $("#defaultAccountSelect option:selected").val()
+                if (newDefaultId == 0) {
+                    $.popupMessage(1, parseError(translationStore.getString('Cannot set a blank default account')), '');
+                    return;
+                }
+                var account = $.grep(user.accounts, function (e) {
+                    return e.id == newDefaultId;
+                })
+
+                
+
+                user.defaultAccountId= account[0].id;
+                userAdmin(user, function () {
+                    $.popupMessage(3, translationStore.getString('Default Account Updated!'), '');
+                    $('#editDefaultAccountButton').prop('disabled', true);
+                },
+                function (error) {
+                    $.popupMessage(1, parseError(error), '');
+                });
+            })
+
+
+            if (onComplete) {
+                onComplete();
+            }
+        }
+
+        function loadUserAgreements(callback) {
+            var $ad = $('#users_AgreementsDiv');
+            $ad.empty();
+            MyTools.Users.getActiveAgreement(function (agreement) {
+                    if (!agreement) {
+                        if (callback) {
+                            callback();
+                        }
+                        return;
+                    }
+                    MyTools.Users.getUserAgreements(sessionId, agreement['id'], function (responses) {
+                            if (!responses || responses.length == 0) {
+                                if (callback) {
+                                    callback();
+                                }
+                                return;
+                            }
+                            var h = [];
+                            h.push('<h3 style="padding-top: 0.4em;">' + translationStore.getString('Reseller Terms and Conditions') + '</h3>');
+                            h.push('<ul class="auto-grid">');
+                            //h.push('<li>Current Agreement</li>');
+                            //h.push('<li><a href="' + agreement.url + '">' + agreement.name + '</a></li>');
+                        var ah = '<li><a href="' + agreement.url + '" target="_blank" rel="noopener noreferrer">' + translationStore.getString('Current Agreement') + '</a></li>';
+                            $.each(responses, function (key, value) {
+                                if (value['acceptDate']) {
+                                    var acceptDate = MyTools.DateTime.toDate(value['acceptDate']);
+                                    h.push(ah);
+                                    h.push('<li>' + translationStore.getFormattedString('Accepted on {0}', [MyTools.DateTime.DateTo.shortDateString(acceptDate)]) + ' (' + value.account.accountId + '|' + value.response + ')' + '</li>');
+                                }
+                            });
+                            h.push('</ul>');
+                            $ad.html(h.join(''));
+                        },
+                        function (error) {
+                            // Error, do nothing
+                            if (callback) {
+                                callback();
+                            }
+                        });
+                },
+                function (error) {
+                    // Error, do not load
+                    if (callback) {
+                        callback();
+                    }
+                });
+        }
+
+        // Execution Point
+        translationStore.translatePageTitle();
+        translationStore.translateElementFromId('checkmatePageName');
+        translationStore.translateElementFromId('MyUserAdministration');
+
+        loadUserProfile(function () {
+            loadAdToolbar(function () {
+                loadToolbar(function () {
+                    loadUserAgreements('');
+                    loadAdTable('');
+                    loadAdApprovalTable('');
+                    loadUserList('');
+                    if (onComplete) {
+                        onComplete();
+                    }
+                });
+            });
+        });
+    });
+};

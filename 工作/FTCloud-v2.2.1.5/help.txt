@@ -1,0 +1,56 @@
+#恢复2214版本
+rm -rf /iotp/Release_FTCloud_normal_V2.2.1.5_multi
+
+rm -rf /iotp/base-platform/*
+cp -R /iotp/base-platform_bak2214/* /iotp/base-platform/
+
+rm -rf /iotp/devops/*
+cp -R /iotp/devops_bak2214/* /iotp/devops/
+
+rm -rf /iotp/freight/*
+cp -R /iotp/freight_bak2214/* /iotp/freight/
+
+chown -R streamax:streamax /iotp/freight/
+chown -R streamax:streamax /iotp/base-platform/
+chown -R streamax:streamax /iotp/devops/
+
+mysql -uroot -h127.0.0.1 -p"$(cat /iotp/data/mariadb/.pswd)" -P13306 </iotp/rollback.sql
+
+kill -9 "$(ps -aux | grep iotp_daemon_freight | grep -v grep | awk '{print $2}')"
+
+
+#停止全部服务
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-alarm/bin && ./stop.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-evidence/bin && ./stop.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-gateway/bin && ./stop.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-registry/bin && ./stop.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-server/bin && ./stop.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-tap/bin && ./stop.sh"
+
+su - streamax -c "cd /iotp/base-platform/report/report/bin && ./stop.sh"
+
+su - streamax -c "cd /iotp/freight/server/freight-server/bin && ./stop.sh"
+su - streamax -c "cd /iotp/freight/nodeweb/ftmanager-web/bin && ./stop.sh"
+su - streamax -c "cd /iotp/freight/nodeweb/ftvision-web/bin && ./stop.sh"
+
+su - streamax -c "cd /iotp/devops/devops-server/bin && ./stop.sh"
+
+
+#启动全部服务
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-alarm/bin && ./start.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-evidence/bin && ./start.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-gateway/bin && ./start.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-registry/bin && ./start.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-server/bin && ./start.sh"
+su - streamax -c "cd /iotp/base-platform/server/freight-base-platform-tap/bin && ./start.sh"
+
+su - streamax -c "cd /iotp/base-platform/report/report/bin && ./start.sh"
+
+su - streamax -c "cd /iotp/freight/server/freight-server/bin && ./start.sh"
+su - streamax -c "cd /iotp/freight/nodeweb/ftmanager-web/bin && ./start.sh"
+su - streamax -c "cd /iotp/freight/nodeweb/ftvision-web/bin && ./start.sh"
+
+su - streamax -c "cd /iotp/devops/devops-server/bin && ./start.sh"
+
+
+sh /iotp/freight/script/iotp_daemon_freight.sh start

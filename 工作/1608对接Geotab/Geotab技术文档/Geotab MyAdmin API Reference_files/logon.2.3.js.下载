@@ -1,0 +1,1652 @@
+﻿var isDebug = window.location.host == '127.0.0.1' || window.location.host == 'localhost';
+var isBeta;
+var serverAPIUrl = getServerAPI();
+var gmsApiStoreUrl = serverAPIUrl + "/Data/MyUserStore.ashx";
+var gmsServerStatusUrl = serverAPIUrl + "/Data/ServerStatusStore.ashx";
+var gmsServerMonitorUrl = serverAPIUrl + "/Data/ServerMonitorStore.ashx";
+var zendeskStoreUrl = serverAPIUrl + "/Data/ZendeskStore.ashx";
+var fileUploaderUrl = serverAPIUrl;
+var imgUrl = "https://resourcescdn.geotab.com/myadmin-assets/";
+
+var ajaxCall = function (url, args) {
+	var onSuccess = args.success || function () {
+	};
+	var onError = args.error || function () {
+	};
+	$.ajax({
+		type: "POST",
+		cache: false,
+		dataType: "json",
+		data: "JSON-RPC=" + encodeURIComponent(stringifyV2({ id: -1, method: args.method, params: args.params })),
+		url: url,
+		success: function (response) {
+			if (response.error) {
+				var parsedError = parseError(response.error);
+
+				if (parsedError.indexOf('SessionExpiredException') > -1) {
+					loadLogonForm('', true);
+				} else {
+					var errorVal = 'Roles are not set, please contact support';
+					if (parsedError == "TargetInvocationException: Unauthorized") {
+						$.popupMessage(1, errorVal, errorVal);
+
+						setTimeout(function () {
+							self.logoff();
+						}, 1000)
+
+					}
+					else {
+						onError(response.error);
+					}
+				}
+			}
+			else if (response.result || response.result == null) {
+				onSuccess(response.result);
+			}
+			else {
+				onError("Unknown error.");
+			}
+		},
+		error: function (error) {
+			var parsedError = parseError(error);
+			$.popupMessage(1, parsedError);
+			onError(error);
+		}
+	});
+};
+
+var gmsApiCallSimple = function (method, parms, callback, onError) {
+	var m = {
+		method: method,
+		params: parms,
+		success: function (result) {
+			if (callback) {
+				callback(result);
+			}
+			return result;
+		},
+		error: function (error) {
+			if (onError) {
+				onError(error);
+			}
+			else {
+				$.popupMessage(1, parseError(error), '');
+			}
+			return error;
+		}
+	};
+	ajaxCall(gmsApiStoreUrl, m);
+};
+
+var gmsApiCall = function (args) {
+	ajaxCall(gmsApiStoreUrl, args);
+};
+
+var serverStatusCall = function (args) {
+	ajaxCall(gmsServerStatusUrl, args);
+};
+
+var serverMonitorCall = function (args) {
+	ajaxCall(gmsServerMonitorUrl, args);
+};
+
+var zendeskCall = function (args) {
+	ajaxCall(zendeskStoreUrl, args);
+};
+
+var loadLogonForm = function (urlPrefix, sessionExpired) {
+	top.location.reload();
+};
+
+var gmsLogonV2 = function (roleString, onCompletion) {
+	// get calling target
+	var callingTarget = window.location;
+	var self = this,
+		injectHeader = callingTarget.href.indexOf('/sdk') < 0;
+	var urlPrefix = (injectHeader ? '' : '../../');
+	var roles = roleString;
+	if (!(roleString instanceof Array)) {
+		roles = (roleString ? roleString.split(',') : '');
+	}
+
+	var store = new GmsApiStore();
+	var accountList = null;
+	var accountNos = [];
+	var roleList = null,
+		acOpList = null,
+		userAccountOptions = [];
+	var activeCredentials = { activeStore: store, activeUser: null };
+	var translationStore = null;
+
+	self.getAccountFromAccountNo = function (accountNo) {
+		var user = self.activeUser();
+		var acToLookup = [];
+		if (user['isInternal']) {
+			acToLookup.push(accountList);
+		}
+		else {
+			acToLookup.push(user.accounts);
+		}
+		for (var i = 0; i < acToLookup; i++) {
+			if (acToLookup[i].accountId === accountNo) {
+				return acToLookup[i];
+			}
+		}
+		return null;
+	};
+
+	var getAccountsForUser = function (sessionId, onSuccess, onFailure) {
+		gmsApiCall({
+			method: 'GetUserAccounts',
+			params: {
+				sessionId: sessionId
+			},
+			success: function (result) {
+				if (onSuccess) {
+					onSuccess(result);
+				}
+			},
+			error: function (error) {
+				if (onFailure) {
+					onFailure(error);
+				}
+			}
+		});
+	};
+
+	var getRolesForUser = function (sessionId, onSuccess, onFailure) {
+		gmsApiCall({
+			method: 'GetRolesForUser',
+			params: { sessionId: sessionId },
+			success: function (result) {
+				if (onSuccess) {
+					onSuccess(result);
+				}
+			},
+			error: function (error) {
+				if (onFailure) {
+					onFailure(error);
+				}
+			}
+		});
+	}
+
+	var checkSession = function (sessionId, callback) {
+		gmsApiCall({
+			method: "CheckSession",
+			params: {
+				sessionId: sessionId
+			},
+			success: function (result) {
+				if (callback) {
+					callback(result);
+				}
+			},
+			error: function (error) {
+				callback(false);
+			}
+		});
+	};
+
+	var getWebUser = function (sessionId, onSuccess, onFailure) {
+		gmsApiCall({
+			method: "GetWebUser",
+			params: {
+				sessionId: sessionId
+			},
+			success: function (result) {
+				if (onSuccess) {
+					onSuccess(result);
+				}
+
+			},
+			error: function (error) {
+				if (onFailure) {
+					onFailure(error);
+				}
+			}
+		});
+	};
+
+	self.getAccountOptions = function (sessionId, accountId, onSuccess, onFailure) {
+		gmsApiCall({
+			method: "GetAccountOptions",
+			params: {
+				sessionId: sessionId,
+				accountIdFilter: accountId == null ? -1 : accountId
+			},
+			success: function (result) {
+				if (onSuccess) {
+					onSuccess(result);
+				}
+
+			},
+			error: function (error) {
+				if (onFailure) {
+					onFailure(error);
+				}
+			}
+		});
+	};
+
+	// Sets the collection of AccountOption objects for the logged on user
+	// Used for custom & beta code
+	self.setAccountOptionsForUser = function (user, callback) {
+		userAccountOptions = [];
+		if (!user['isInternal'] && user.accounts && user.accounts.length > 0) {
+			$.each(user.accounts, function (key, account) {
+				$.each(acOpList, function (key2, accountOption) {
+					if (account.id == accountOption.account.id) {
+						userAccountOptions.push(accountOption['codes']);
+					}
+				});
+			});
+		}
+		if (callback) {
+			callback(userAccountOptions);
+		}
+	};
+
+	// Returns whether the current collection of AccountOption objects for the logged on user contains the specified Option string
+	self.isUserInOption = function (option) {
+		if (!userAccountOptions || userAccountOptions.length == 0) {
+			return false;
+		}
+		var isFound = false;
+		for (var i = 0; i < userAccountOptions.length; i++) {
+			if (option == userAccountOptions[i]) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	var authenticateUser = function (onAuthenticate) {
+		var webUser = (sessvars ? sessvars['activeUser'] : null);
+		gmsApiCallSimple('GetSessionIdFromCookie', {}, function (result) {
+			if (result === null) {
+				loadLogonForm(urlPrefix);
+				return;
+			}
+			self.sessionId = result.sessionId;
+			activeCredentials.activeUser = result.activeUser;
+			if (!webUser) {
+				sessvars['activeUser'] = {
+					langugage: result.activeUser.language
+				};
+			}
+			if (onAuthenticate) {
+				onAuthenticate();
+			}
+			return;
+		});
+	};
+
+	self.currentPageName = function (callback) {
+		var path = window.location.pathname;
+		path = path.substring(path.lastIndexOf('/') + 1);
+		if (callback) {
+			callback(path.toLowerCase());
+		}
+		return path.toLowerCase();
+	};
+
+	self.clearOrderBasket = function () {
+		sessvars.orderBasket = null;
+		$("#orderBasket").empty().hide();
+		var currentPage = self.currentPageName();
+		if (currentPage == "checkout.html") {
+			if (isBeta) {
+				location.href = "orderproduct.html?beta=1";
+			}
+			else {
+				location.href = "orderproduct.html?beta=1";
+			}
+		}
+		else if (currentPage == "orderproduct.html?beta=1") {
+			MyTools.Orders.Ui.Orders2(this).fullRefresh('');
+		}
+	};
+
+	self.removeFromOrderBasket = function (code, pricingTypeId, callback) {
+		var orderBasket = sessvars.orderBasket;
+		var itemCount = 0;
+		if (orderBasket != null && orderBasket.products.length > 0) {
+			for (var i = 0; i < orderBasket.products.length; i++) {
+				if (orderBasket.products[i].productCode == code && orderBasket.products[i].pricingTypeId == pricingTypeId) {
+					orderBasket.products.splice(i, 1);
+				}
+				if (orderBasket.products.length == 0) {
+					break;
+				}
+				if (orderBasket.products[i] && orderBasket.products[i].linkedProductCode == code) {
+					orderBasket.products.splice(i, 1);
+				}
+			}
+			self.updateOrderBasket(function () {
+				if (callback) {
+					callback();
+				}
+			});
+		}
+	};
+
+	self.updateItemInOrderBasket = function (code, qty, callback) {
+		var orderBasket = sessvars.orderBasket;
+		for (var i = 0; i < orderBasket.products.length; i++) {
+			if (orderBasket.products[i].productCode == code) {
+				orderBasket.products[i].quantity = qty;
+			}
+			if (orderBasket.products[i].linkedProductCode == code) {
+				if (qty < orderBasket.products[i].quantity) {
+					orderBasket.products[i].quantity = qty;
+				}
+			}
+		}
+		self.updateOrderBasket(function () {
+			if (callback) {
+				callback();
+			}
+		});
+	};
+
+	self.updateOrderBasket = function (callback) {
+		var orderBasket = sessvars.orderBasket;
+		var $orderBasket = $("#orderBasket");
+		$orderBasket.removeClass('highlight light-blue');
+		$orderBasket.empty().hide();
+		if (orderBasket != null) {
+			var checkoutUrl = "checkout.html?beta=1";
+
+			var itemCount = 0;
+			var description = (orderBasket.planningOrderId > 0 ? 'Planning Order ' : '') + translationStore.getString('Basket') + ': ';
+			var basketColor = (orderBasket.planningOrderId > 0 ? 'light-blue' : 'highlight');
+			if (orderBasket.products.length > 0) {
+				for (var i = 0; i < orderBasket.products.length; i++) {
+					itemCount += orderBasket.products[i].quantity;
+				}
+			}
+			if (itemCount > 0) {
+				var productsUrl = "orderproduct.html?beta=1";
+				var orderHtml = description + itemCount + ' ' + translationStore.getString('item(s)') + ' | <a href="' + checkoutUrl + '">' + translationStore.getString('Checkout') + '</a> | <a href="' + productsUrl + '">' + translationStore.getString('Add') + '</a> | <a href="#" onclick="self.clearOrderBasket();">' + translationStore.getString('Clear') + '</a>';
+				$orderBasket.append(orderHtml).show();
+			}
+			$orderBasket.addClass(basketColor);
+		}
+		if (callback) {
+			callback();
+		}
+	};
+
+	self.isUserAllowed = function (user, roles, allowInternal) {
+		var customer = false;
+		if (user.userType == "Customer" && (self.location.href.includes("helpdesk") || (self.location.href.lastIndexOf("legacy/index.htm?beta=1") == self.location.href.length - 23))) {
+			user.roles = [''];
+			customer = true;
+		}
+		if (allowInternal && user['isInternal']) {
+			return true;
+		}
+		if (!roles || roles.length == 0 || roles[0] === '%' || roles[0] === '') {
+			return true;
+		}
+		// Separate Account Options
+		for (var c = 0; c < roles.length; c++) {
+			var r = roles[c];
+			if (r.indexOf("@") == 0) {
+				if (!acOpList || !user.accounts || user.accounts.length == 0) {
+					continue;
+				}
+				// Account Role
+				var ar = r.replace("@", "").toUpperCase();
+				for (var j = 0; j < user.accounts.length; j++) {
+					var ua = user.accounts[j];
+					for (var k = 0; k < acOpList.length; k++) {
+						/*if (acOpList[k]['account']['id'] == ua.id && acOpList[k][ar]) {
+						 return true;
+						 }*/
+						if (acOpList[k]['account']['id'] == ua.id) {
+							// Account matches check roles
+							var codes = acOpList[k]['codes'];
+							if (codes && codes.length > 0) {
+								for (var l = 0; l < codes.length; l++) {
+									if (codes[l] == ar) {
+										return true;
+									}
+								}
+							}
+						}
+					}
+				}
+				return false;
+			}
+			else {
+				// User Role
+				if ((user.roles == null || user.roles.length == 0) && customer == false) {
+					return false;
+				}
+				for (var i = 0; i < user.roles.length; i++) {
+					if (r.toUpperCase() === 'INTERNAL' && user['isInternal']) {
+						return true;
+					}
+					if (r.toUpperCase() === 'INSTALLER' && user['userType'] === 'Installer') {
+						return true;
+					}
+					if (user.roles[i].name === r) {
+						return true;
+					}
+				}
+				if (customer) {
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+
+	self.hasAccountOption = function (account, accountOption) {
+		for (var k = 0; k < acOpList.length; k++) {
+			if (acOpList[k]['account']['id'] == account.id) {
+				var codes = acOpList[k]['codes'];
+				if (codes && codes.length > 0) {
+					for (var l = 0; l < codes.length; l++) {
+						if (codes[l] == accountOption) {
+							return true;
+						}
+					}
+				}
+			}
+		}
+
+		return false;
+	};
+
+	self.validatePromoCode = function (sessionId, accountId, $input, validationType, $label, onValidate) {
+		var promoCode = $input.val().toUpperCase();
+		var hasLabel = $label != null;
+		if (!promoCode) {
+			if (hasLabel) {
+				$label.removeClass('good bad').addClass('gms-hint').text('[' + translationStore.getString('Optional') + ']');
+			}
+			$input.removeClass('good-box bad-box');
+			if (onValidate) {
+				onValidate(true);
+			}
+			return;
+		}
+		else if (promoCode.length < 4) {
+			if (hasLabel) {
+				if (validationType == 2) {
+					$label.removeClass('good').addClass('bad').text(translationStore.getString('Invalid Rate Plan Code'));
+				} else {
+					$label.removeClass('good').addClass('bad').text(translationStore.getString('Invalid Promo Code'));
+				}
+			}
+			$input.removeClass('good-box').addClass('bad-box');
+			if (onValidate) {
+				onValidate(false);
+			}
+			return;
+		}
+		if (hasLabel) {
+			$label.text(translationStore.getString('Checking code...'));
+		}
+		store['isRatePlanValid'](sessionId, accountId, promoCode, validationType, function (data) {
+			if (!data || !data.result) {
+				if (hasLabel) {
+					if (validationType == 2) {
+						$label.removeClass('good').addClass('bad').text(translationStore.getString('Invalid Rate Plan Code'));
+					} else {
+						$label.removeClass('good').addClass('bad').text(translationStore.getString('Invalid Promo Code'));
+					}
+				}
+				$input.removeClass('good-box').addClass('bad-box');
+				if (onValidate) {
+					onValidate(false);
+				}
+				return;
+			}
+			else {
+				if (hasLabel) {
+					if (validationType == 2) {
+						$label.removeClass('bad').addClass('good').text(translationStore.getString('Valid Rate Plan Code'));
+					} else {
+						$label.removeClass('bad').addClass('good').text(translationStore.getString('Valid Promo Code'));
+					}
+				}
+				$input.removeClass('bad-box').addClass('good-box');
+			}
+			$input.val(promoCode);
+			if (onValidate) {
+				onValidate(true);
+			}
+			return;
+		});
+	};
+
+	var menuSystem = {
+		menuItems: [
+			{ name: "Home", id: 'menuHome', access: '%', url: 'index.htm' },
+			{ name: "Install Device", id: 'menuInstall', access: 'INSTALLER', url: 'installdevice.htm' },
+			{
+				name: "My Orders", id: 'menuOrders', access: 'Order_Admin,INTERNAL', url: 'orderproduct.html',
+				subMenus: [
+					{ name: "New Order", access: 'Order_Admin,INTERNAL', url: 'orderproduct.html'/*, custom: {access: 'Order_Admin,INTERNAL', url: 'orderproduct.html'}*/ },
+					{ name: "My Saved Orders", access: 'Order_Admin,INTERNAL', url: "orderlookup.htm?{'planningOnly':'true'}" },
+					{ name: "Product Pricing", access: 'Pricing_Admin,INTERNAL', url: 'pricing.html' },
+					{ name: "Monthly Pricing Plans", access: 'Pricing_Admin,INTERNAL', url: 'rateplans.html' },
+					{ name: "Order History", access: 'Order_Admin,INTERNAL', url: 'orderlookup.htm' },
+					{ name: "Device Assignments", access: 'Order_Admin,INTERNAL', url: 'orderassigns.htm' },
+					{ name: "Sales Stats", access: 'Order_Admin,INTERNAL', url: 'orderStats.html' },
+				]
+			},
+			{
+				name: "My Devices", id: 'menuDevices', access: '%', url: 'deviceLookups.htm',
+				subMenus: [
+					{ name: "Devices", access: 'Device_Admin,INTERNAL', url: 'deviceadmin.htm' },
+					{ name: "Activation History", access: 'Device_Admin,INTERNAL', url: 'activaterequests.html' },
+					{ name: "Monthly Billings", access: 'Billing_Admin,INTERNAL', url: 'billing.htm' },
+					{ name: "Device Timeline", access: 'INTERNAL,Device_Admin', url: 'timeline.html' },
+					{ name: "Status Lookup", access: '%', url: 'devicelookups.htm' },
+					{ name: "Install Logs", access: 'Reseller,INTERNAL', url: 'deviceinstalls.htm' },
+					{ name: "Billing Management", access: 'INTERNAL', url: 'activeadmin.html' },
+					{ name: "SIM Query", access: 'INTERNAL', url: 'simquery.html' },
+					{ name: "SIM Ignore", access: 'INTERNAL', url: 'simignore.html' },
+					{ name: "SIM Query Categories", access: 'INTERNAL', url: 'simquerycategory.html' }
+				]
+			},
+			{
+				name: "Support", id: 'menuSupport', access: '%', url: 'alerts.htm',
+				subMenus: [
+					{ name: "New Ticket", access: "Reseller,INTERNAL", url: "helpdesk.html?method=new" },
+					{ name: "Help Desk", access: 'Reseller,INTERNAL', url: 'helpdesk.html' },
+					{ name: "Device Diagnostics", access: 'INTERNAL', url: 'diag.htm' },
+					{ name: "MyGeotab Admin", access: 'Beta_User,INTERNAL', url: 'myserveradmin.html' },
+					{ name: "Alerts", access: 'Reseller,INTERNAL', url: 'alerts.htm' },
+					{ name: "Forum", access: '%', url: 'http://support.geotab.com' },
+					{ name: "Vehicle / VIN Lookup", access: '%', url: 'vins.htm' },
+					{ name: "Support Contact Info", access: 'Reseller,INTERNAL', url: 'contact.html' },
+				]
+			},
+			{ name: "Resources", id: 'menuResources', access: 'Resource_Admin,INTERNAL', url: 'https://sales.geotab.com' },
+			{
+				name: "Repairs", id: 'menuRepairs', access: 'Repair_Admin,INTERNAL', url: 'rmas.htm',
+				subMenus: [
+					{ name: "Active Repairs", access: 'Repair_Admin,INTERNAL', url: 'rmas.htm' },
+					{ name: "Repair Requests", access: 'Repair_Admin,INTERNAL', url: 'rmarequests.htm' }
+				]
+			},
+			//MP ENABLE
+			{
+				name: "Marketplace", id: 'menuMarketplace', access: 'Reseller,Partner_Marketplace_Admin,INTERNAL', url: 'marketplacesolutionsbeta.htm',
+				subMenus: [
+					//{ name: "Marketplace Solutions", access: 'Reseller,INTERNAL', url: 'marketplacesolutions.htm' },
+					//{ name: "Add-In History", access: 'Billing_Admin,Partner_Admin,INTERNAL', url: 'addinActivation.html' },
+					{ name: "BOBO Beta", access: 'Reseller,INTERNAL', url: 'marketplacesolutionsbeta.htm' },
+					{ name: "Partner Portal", access: 'Partner_Marketplace_Admin,INTERNAL', url: 'https://marketplace.geotab.com/PartnerPortal/' }
+				]
+			},
+			{
+				name: "Admin", id: 'menuAdmin', access: 'Reseller,INTERNAL', url: 'users.html',
+				subMenus: [
+					{ name: "Account Admin", access: 'Reseller,INTERNAL', url: 'users.html' },
+					{ name: "Server Monitor Admin", access: 'Server_Status,INTERNAL', url: 'servermonitoradmin.html' },
+					//{ name: "Customer Admin", access: 'Reseller,INTERNAL', url: 'contacts.html' },
+					{ name: "Reseller Contact Info", access: 'Reseller,INTERNAL', url: 'supportcontact.html' },
+					{ name: "Staff Leave", access: 'INTERNAL', url: 'staffleave.html' },
+					// { name: "Leave Admin", access: 'INTERNAL', url: 'leaveadmin.html' },
+					{ name: "Regional Pricing Policy", access: 'Pricing_Admin,INTERNAL', url: 'regionalpricing.html' },
+					{ name: "Test Exception", access: 'INTERNAL', url: 'testException.html' },
+					{ name: "Data Agent Settings", access: 'INTERNAL', url: 'dataagentsettings.htm' },
+					{ name: "Database Activity", access: 'Reseller,INTERNAL', url: 'databaseactivity.html' }
+					//{ name: "Database Admin", access: 'INTERNAL', url: 'myDatabaseadmin.html'}
+				]
+			},
+			//MP ENABLE
+			//{ name: "Partners", id: 'menuPartner', access: 'Partner_Admin,INTERNAL', url: 'partner.htm' },
+
+		],
+		MENU_VERSION: '3',
+		getRelated: function (callback) {
+			self.currentPageName(function (curPage) {
+				var relatedItems = [];
+				$.each(menuSystem.menuItems, function (key, value) {
+					var menuId = null;
+					if (value.subMenus && value.subMenus.length > 0) {
+						var au = self.activeUser();
+						$.each(value.subMenus, function (key, subValue) {
+							var smUrl = subValue.url;
+							// Check to see if the menu item has custom menus for custom roles
+							if (subValue.custom && subValue.custom.access) {
+								var r = subValue.custom.access.split(',');
+								if (self.isUserAllowed(au, r, false)) {
+									smUrl = subValue.custom.url;
+								}
+							}
+							if (menuId != null || smUrl == curPage) {
+								menuId = value.id;
+								var strRoles = subValue.access.split(',');
+								relatedItems.push({
+									name: subValue.name,
+									access: strRoles,
+									url: smUrl
+								});
+							}
+						});
+					}
+				});
+				if (callback) {
+					callback(relatedItems);
+				}
+				return relatedItems;
+			});
+		},
+		setActiveOwner3: function () {
+			self.currentPageName(function (curPage) {
+				$('.submenu').hide();
+				$.each(menuSystem.menuItems, function (key, value) {
+					var menuId = value.id;
+					if (value.subMenus && value.subMenus.length > 0) {
+						var au = self.activeUser();
+						$.each(value.subMenus, function (key, subValue) {
+							var smUrl = subValue.url;
+							// Check to see if the menu item has custom menus for custom roles
+							if (subValue.custom && subValue.custom.access) {
+								var r = subValue.custom.access.split(',');
+								if (self.isUserAllowed(au, r, false)) {
+									smUrl = subValue.custom.url;
+								}
+							}
+							if (smUrl == curPage) {
+								$('#' + menuId).find('a').addClass("selected");
+								//$('.submenu a[href$="' + stringifyV2(curPage) + '"]').css('fontSize', '1.6em');
+							}
+						});
+					}
+					else if (value.url == curPage) {
+						$('#' + menuId).find('a').addClass("selected");
+					}
+				});
+			});
+		},
+		getMenu3: function (user, callback) {
+			var menuArray = [];
+			$.each(menuSystem.menuItems, function (key, value) {
+				var menuId = value.id;
+				var accessRoles = value.access.split(',');
+				var $m = $('#menu');
+				if (self.isUserAllowed(user, accessRoles, false)) {
+					menuArray.push(menuId);
+					$m.append('<li class="menu-li-hover" id="' + menuId + '"><a href="' + value.url + '" class="menu-hover ' + menuId + 'link">' + self.getTranslationStore().getString(value.name) + '</a></li>');
+					var $menu = $m.find('#' + menuId);
+					var counter = 0;
+					if (value.subMenus && value.subMenus.length > 0) {
+						$.each(value.subMenus, function (key, subValue) {
+							counter = counter + 1;
+							if (counter == 1) {
+								// remove href
+								$menu.find('a.menu-hover').attr('href', '#');
+								$menu.append('<ul class="submenu ' + menuId + '"><li class="submenu-top"></li>');
+							}
+							var accessRoles = subValue.access.split(',');
+							if (self.isUserAllowed(user, accessRoles, false)) {
+								var smUrl = subValue.url;
+								// Check to see if the menu item has custom menus for custom roles
+								if (subValue.custom && subValue.custom.access) {
+									var r = subValue.custom.access.split(',');
+									if (self.isUserAllowed(user, r, false)) {
+										smUrl = subValue.custom.url;
+									}
+								}
+								$("." + menuId).append('<li><a id="' + smUrl + '" href="' + smUrl + '">' + self.getTranslationStore().getString(subValue.name) + '</a></li>');
+							}
+						});
+					}
+					if (counter > 0) {
+						$("#" + menuId + " ul").append('<li class="submenu-bottom"></li></ul>');
+					}
+				}
+				callback.call();
+			});
+			return callback;
+		},
+		loadMenuItems3: function (user) {
+			menuSystem.getMenu3(user, function () {
+				//menuSystem.setActiveOwner3();
+			});
+			var $myMenus = $('.menu-hover');
+			$myMenus.on('mouseover', function () {
+				var $currentSubMenu = $(this).parent().find('ul.submenu');
+				if (!$(this).data('init')) {
+					$(this).data('init', true);
+					$('.submenu').slideUp('fast');
+					$(this).parent().hoverIntent({
+						sensitivity: 40,
+						timeout: 450,
+						over: function () {
+							$currentSubMenu.slideDown('fast');
+						},
+						out: function () {
+							$currentSubMenu.slideUp('fast');
+						}
+					});
+					$(this).trigger('mouseover');
+				}
+			});
+			menuSystem.setActiveOwner3();
+		},
+		execute: function (user) {
+			menuSystem['loadMenuItems' + menuSystem.MENU_VERSION](user);
+		}
+	};
+
+	self.addRelated = function ($toolbar, callback) {
+		if (!$toolbar || $toolbar.length == 0) {
+			return;
+		}
+		if ($toolbar.hasClass('related')) {
+			return;
+		}
+		menuSystem.getRelated(function (items) {
+			var user = self.activeUser();
+			if (items && items.length > 0) {
+				var h = [];
+				h.push('&nbsp;<button id="related_OptionsButtonId" class="related">' + translationStore.getString('Related Tasks') + '</button>');
+				var counter = 0;
+				var hh = [];
+				hh.push('<div style="display: none;" class="popup ui-widget-content ui-corner-bottom templateListPopup" id="related_OptionsPopupId">' +
+					'<div><ul style="list-style-type: none;">');
+				for (var i = 0; i < items.length; i++) {
+					var item = items[i];
+					if (self.isUserAllowed(user, item.access, true)) {
+						hh.push('<li><a href="' + items[i].url + '?beta=1">' + translationStore.getString(items[i].name) + '</a></li>');
+						counter++;
+					}
+				}
+				hh.push('</ul></div></div>');
+				if (counter > 0) {
+					$toolbar.append(h.join(''));
+					$toolbar.parent().append(hh.join(''));
+					$("#related_OptionsButtonId").button({
+						icons: {
+							secondary: "ui-icon-triangle-1-s"
+						}
+					}).popupWindow({
+						onHide: function () {
+						},
+						content: $("#related_OptionsPopupId"),
+						position: "bottom_right",
+						hasButtonRow: false
+					});
+					//$('#related_OptionsPopupId').find('a').button();
+				}
+				if (callback) {
+					callback();
+				}
+			}
+		});
+	};
+
+	self.loadActiveToolbar = function (user) {
+		var appendHtml = function () {
+			var h = [];
+
+			h.push('<div id="links-in-blue-line">');
+			//h.push('<span id="orderBasket" class="gms-box header-Notice" style="display: none;"></span>&nbsp;');
+			h.push('<a href="help.html?lang=' + translationStore.getLang() + '" title="' + translationStore.getString('MyAdmin User, Policy and Procedures Guide') + '" target="_blank" rel="noopener noreferrer">' + translationStore.getString('Help') + '</a> | ');
+			h.push('<a href="http://support.geotab.com" title="' + translationStore.getString('Geotab Support Forum') + '" target="_blank" rel="noopener noreferrer">' + translationStore.getString('Support Forum') + '</a> | ');
+			h.push('<a href="http://www.geotab.com/" title="' + translationStore.getString('GPS Vehicle Tracking Solutions, GPS Fleet Management') + '" target="_blank" rel="noopener noreferrer">www.geotab.com</a> | ');
+			h.push('<a href="http://my.geotab.com/" title="' + translationStore.getString('MyGeotab GPS Vehicle Tracking Solutions') + '" target="_blank" rel="noopener noreferrer">' + translationStore.getString('MyGeotab') + '</a> | ');
+
+
+			h.push('<div id="loginBar">');
+			h.push('<a id="loggedInState_dropdownButtonId" class="popupWindowTrigger">');
+			h.push('<img src="css/images/defaultProfileIcon.png" alt="" onerror="this.removeAttribute(\'onerror\'); this.src=\'defaultProfileIcon.png\'">');
+			h.push('<span class="loggedInState_UserButton">' + user.name + '</span>');
+			h.push('<img src="css/images/defaultArrowDown.png" id="arrown-down" alt="" onerror="this.removeAttribute(\'onerror\'); this.src=\'defaultArrowDown.png\'">');
+			h.push('</a>');
+			h.push('</div>');
+			h.push('<div id="loggedinState_dropdownContent" style="right:10px; top: 40px; height: 125px; display: none;" class="popupWindow">');
+			h.push('<ul>');
+			h.push('<li><a id="loggedInState_optionsButtonId" class="geotabButton geotabBlueButton geotabRoundedCorners" href="https://myadmin.geotab.com/" target="_top" title="' + translationStore.getString('Geotab Email Subscriptions') + '">' + translationStore.getString('Subscriptions') + '</a></li>');
+			h.push('<li><a id="loggedInState_changePassButtonId" class="geotabButton geotabBlueButton geotabRoundedCorners" href="https://myadmin.geotab.com/" target="_top">' + translationStore.getString('Change Password') + '</a></li>');
+			h.push('<li><a id="loggedInState_logoutButtonId" class="geotabButton geotabRedButton geotabRoundedCorners" href="#signout" style="display: block;">' + translationStore.getString('Sign Out') + '</a></li>');
+			h.push('</ul>');
+			h.push('</div>');
+
+			h.push('</div>'); //links-in-blue-line
+			h.push('<div id="newMsgBox"/>');
+			h.push('<div id="website_container">');
+			h.push('<span id="orderBasket" class="gms-box header-Notice orderBasketNew" style="display: none;"></span>&nbsp;');
+			// Insert here
+			h.push('<div id="entire-logo-links-container">');
+			h.push('<div id="logo">');
+			h.push('<a href="https://myadmin.geotab.com/"><img src="https://resourcescdn.geotab.com/myadmin-assets/misc/myadmin_small.jpg" alt="' + translationStore.getString('MyAdmin Geotab online ordering and user account management') + '" width="299" height="53" border="0" />');
+			h.push('</a>');
+			h.push('</div>'); //logo
+			h.push('<div id="right-hand-links-container">');
+			h.push('<div id="main-nav-container">');
+			h.push('<div id="topnavbg">');
+			h.push('<div id="menucontainer">');
+			h.push('<div id="menupane">');
+			h.push('<ul id="menu"></ul>');
+			h.push('<span id="submenupane"></span>');
+			h.push('</div>'); //menupane
+			h.push('</div>'); //topnavarea
+			h.push('</div>'); //topnavbg
+			h.push('</div>'); //main-nav-container
+			h.push('</div>'); //right-hand-links-container
+			h.push('</div>'); //entire-logo-links-container
+			h.push('<div id="body-container"></div>');
+			//h.push('<div id="footer-container"><p><img class="align-center" src="images/geotab_footer.png" alt="Geotab, Inc" border="0" /></p><p>&copy; Copyright 2010 | All Rights Reserved - Geotab, Inc.</p></div>');
+			h.push('<div id="footer-container">');
+			h.push('<div class="leftfoot">' + translationStore.getString('Copyright (c) 2010-2019 Geotab Inc. All Rights Reserved') + '<br/>');
+			h.push(translationStore.getString('GPS Vehicle Tracking and GPS Fleet Management Solutions') + '<br/>');
+			h.push('<a href="http://www.geotab.com/contact.aspx" target="_blank" rel="noopener noreferrer">' + translationStore.getString('Contact Us') + '</a><br />');
+			h.push('</div>'); //leftfoot
+			h.push('<div class="rightfoot">');
+			h.push('<a href="http://www.geotab.com" target="_blank" rel="noopener noreferrer"><img alt="' + translationStore.getString('Geotab Inc. - GPS Vehicle Tracking and GPS Fleet Management Solutions') + '" border="0" src="https://resourcescdn.geotab.com/myadmin-assets/misc/geotab_footer.png"/></a>');
+			h.push('<br/><a class="soc-fb" href="http://www.facebook.com/geotab" target="_blank" rel="noopener noreferrer" title="' + translationStore.getString('Geotab on Facebook') + '"><img src="https://resourcescdn.geotab.com/myadmin-assets/misc/facebook.jpg" alt="' + translationStore.getString('Geotab on Facebook') + '" width="25" height="25" border="0"/></a>');
+			h.push('<a class="soc-tw" href="http://www.twitter.com/geotab" target="_blank" rel="noopener noreferrer" title="' + translationStore.getString('Geotab on Twitter') + '"><img src="https://resourcescdn.geotab.com/myadmin-assets/misc/twitter.jpg" alt="' + translationStore.getString('Geotab on Twitter') + '" width="25" height="25" border="0"/></a>');
+			h.push('<a class="soc-li" href="http://www.linkedin.com/companies/geotab" target="_blank" rel="noopener noreferrer" title="' + translationStore.getString('Geotab on LinkedIn') + '"><img src="https://resourcescdn.geotab.com/myadmin-assets/misc/linked-in.jpg" alt="' + translationStore.getString('Geotab on LinkedIn') + '" width="25" height="25" border="0"/></a>');
+			h.push('<a class="soc-yt" href="http://www.youtube.com/mygeotab" target="_blank" rel="noopener noreferrer" title="' + translationStore.getString('Geotab on YouTube') + '"><img src="https://resourcescdn.geotab.com/myadmin-assets/misc/You-Tube.jpg" alt="' + translationStore.getString('Geotab on YouTube') + '" width="26" height="25" border="0"/></a>');
+			h.push('</div>'); // rightfoot
+			h.push('</div>'); //footer-container
+			h.push('</div>'); //website_container
+			$(h.join('')).prependTo($(document.body));
+			var $content = $('#website_LogonButtonPopupId');
+			$content.find('a').button().css('width', '150px').css('margin-top', '0.2em').css('margin-bottom', '0.2em').css('padding-top', '0.4em').css('padding-bottom', '0.4em');
+
+
+			/*$('#website_LogonButtonId').button({icons: {primary: 'ui-icon-person', secondary: 'ui-icon-triangle-1-s'}}).popupWindow(
+			 {
+			 content: $content,
+			 //position:"bottom_right",
+			 hasButtonRow: false
+			 });*/
+
+			$("#loggedInState_dropdownButtonId").on("click", function (e) {
+				$("#loggedinState_dropdownContent").slideToggle();
+				e.stopPropagation();
+			});
+
+			$("#loggedinState_dropdownContent").on("click", function (e) {
+				e.stopPropagation();
+			});
+
+			// If the user has the "Customer" role, don't load the menu
+			if (!self.isUserAllowed(user, ['Customer'], false)) {
+				menuSystem.execute(user);
+			}
+
+			
+			betaLoadExecute();
+		};
+		appendHtml(function () {
+		});
+	};
+	self.acceptedBetaBOBOAgreements = function (currentUser, activeStore, callback) {
+		if (currentUser['isInternal']) {
+			exitApp(true);
+			return;
+		}
+
+		function exitApp(doNotShow) {
+			if (callback) {
+				callback(doNotShow);
+			}
+		}
+		MyTools.Users.getActiveBetaAgreementForUser(sessionId, currentUser.userId, 1, function (activeAgreement) {
+			if (!activeAgreement || activeAgreement == null) {
+				exitApp();
+				return;
+			}
+		},
+			function () {
+				exitApp();
+			});
+	}
+
+	self.acceptedBetaHardwareAgreements = function (currentUser, activeStore, callback) {
+		if (currentUser['isInternal']) {
+			exitApp();
+			return;
+		}
+
+		$('body').mask('Please Wait...', 500);
+
+		function exitApp() {
+			var $b = $('body');
+			$b.find('#betaAgreement').detach();
+			$b.unmask();
+			if (callback) {
+				callback();
+			}
+		}
+		MyTools.Users.getActiveBetaAgreementForUser(sessionId, currentUser.userId, 0, function (activeAgreement) {
+			if (!activeAgreement || activeAgreement == null) {
+				exitApp();
+				return;
+			}
+			var html = [];
+			html.push('<div id="betaAgreement" class="gms-hidden">');
+			html.push('<h3>' + translationStore.getString('Geotab Beta Hardware Agreement') + '</h3>');
+			html.push('<div class="gms-box highlight padded"><p>' + translationStore.getString('Geotab Inc. has published new terms and conditions for ordering Beta Hardware. You must read through the terms and conditions below and click "Accept" to view and purchase Beta Hardware.') + '</p><br/>' +
+				'<p>' + translationStore.getString('If you do not agree with any part of the terms and conditions, do not click "Accept" below. Instead, click "Decline". ' +
+					'By clicking "Decline", we will record that you have not accepted the terms and conditions set forth below. ' +
+					'If you do not accept such terms and conditions, you will not be able to order Beta Hardware.') + '</p><br/>');
+			html.push('<p>' + translationStore.getFormattedString('If you have questions or concerns, please contact Geotab by visiting our main {0}site{1}.', [' <a href="http://www.geotab.com">', '</a>']) + '</p>');
+			html.push('</div>');
+			html.push('<p class="ui-widget ui-corner-all ui-state-active">');
+			html.push(activeAgreement.agreementBody);
+			html.push('</p>');
+			html.push('<input type="hidden" id="responseId" />');
+			html.push('<p class="gms-box normal padded"><strong>' + translationStore.getString('I understand and agree that by clicking the "Accept" button below, I will be bound by and will comply with the terms and conditions set forth above for Beta Hardware.') + '</strong></p>');
+			html.push('<ul class="grid padded">');
+			html.push('<li class="column1">' + translationStore.getString('Name') + ':</li>');
+			html.push('<li class="column2"><input type="text" id="response" /></li>');
+			html.push('<li class="column1">' + translationStore.getString('Email Address') + ':</li>');
+			html.push('<li class="column2"><label id="email">' + currentUser.name + '</label></li>');
+			html.push('</ul>');
+			html.push('</div>');
+			var $owner = $(document.body);
+			$('#betaAgreement')['dialog']('destroy');
+			$owner.append(html.join(''));
+			var $dialog = $owner.find('#betaAgreement');
+			var $responseField = $dialog.find('#response');
+			var $responseIdField = $dialog.find('#responseId');
+			$dialog['dialog']({
+				title: activeAgreement.name,
+				autoOpen: true,
+				closeOnEscape: false,
+				height: 600,
+				width: 1000,
+				modal: true,
+				buttons: {
+					Accept: function () {
+						$responseIdField.val('1');
+						$(this)['dialog']('close');
+					},
+					Decline: function () {
+						$responseIdField.val('0');
+						$(this)['dialog']('close');
+					},
+					Print: function () {
+						window.open(activeAgreement.url, '_newtab');
+					}
+				},
+				resize: function () {
+					$dialog.find('iframe#betaAgreementFrame').width($dialog.width() - 20).height($dialog.height() - 320);
+				},
+				close: function () {
+					acceptBetaAgreement();
+				}
+			}).show();
+			$dialog.find('iframe#betaAgreementFrame').width($dialog.width() - 20).height($dialog.height() - 280);
+
+			function acceptBetaAgreement() {
+				var accepted = false;
+				if ($responseIdField.val() == "1") {
+					accepted = true;
+				}
+				var response = $responseField.val();
+				if (!response && accepted) {
+					alert('Please enter your name before accepting the beta agreement!');
+					return;
+				}
+
+				gmsApiCall({
+					method: "AcceptBetaAgreements", params: { sessionId: sessionId, email: currentUser.name, agreementId: activeAgreement.id, response: response, accepted: accepted },
+					success: function () {
+						location.reload();
+					},
+					error: function (error) {
+						$.popupMessage(1, 'There has been an error committing this record. Please try again. If the problem persists, please contact <a href="http://www.geotab.com">Geotab</a>.', '');
+					}
+				});
+			}
+
+			var $firstButton = $('.ui-dialog .ui-dialog-buttonpane .ui-dialog-buttonset .ui-button:first');
+			enableButton($firstButton, false);
+			$responseField.on('keyup change',
+				function () {
+					enableButton($firstButton, $(this).val());
+				}).trigger("focus");
+			$('body').unmask();
+		},
+			function () {
+				exitApp();
+			});
+	}
+
+	self.acceptedAccountAgreements = function (currentUser, activeStore, callback) {
+		exitApp();
+		return;
+
+		function exitApp() {
+			if (callback) {
+				callback();
+			}
+		}
+	};
+	self.acceptedDirectSupportAgreements = function (currentUser, activeStore, callback) {
+		if (currentUser['isInternal']) {
+			exitApp();
+			return;
+		}
+
+		function exitApp() {
+			if (callback) {
+				callback();
+			}
+		}
+
+		function loadDirectSupportAgreementForm(accounts) {
+			if (!accounts || accounts.length < 1) {
+				exitApp();
+				return;
+			}
+			MyTools.Users.getActiveDirectSupportAgreement(sessionId, currentUser.language, function (activeAgreement) {
+				if (!activeAgreement || activeAgreement == null) {
+					exitApp();
+					return;
+				}
+			});
+		}
+
+		gmsApiCall({
+			method: "GetAccountsWithPendingDirectSupportAgreements",
+			params: {
+				sessionId: sessionId
+			},
+			success: function (result) {
+				loadDirectSupportAgreementForm(result);
+			},
+			error: function () {
+				exitApp();
+			}
+		});
+
+	};
+
+	self.logoff = function (redirectLocation) {
+		if (!redirectLocation) {
+			redirectLocation = 'index.htm';
+		}
+		var myLocation = redirectLocation;
+		if (redirectLocation.href) {
+			myLocation = redirectLocation.href.replace('#', '');
+		}
+		var userInfo = $.cookies.get('maSess1');
+		var sessionId = null;
+		if (userInfo && userInfo.sessionId && userInfo.sessionId.length > 0) {
+			sessionId = userInfo.sessionId;
+			userInfo.sessionId = null;
+		}
+		if (isDebug) {
+			$.cookies.set('maSess1', userInfo, { hoursToLive: 48, secure: !isDebug });
+		}
+		else {
+			$.cookies.set('maSess1', userInfo, { hoursToLive: 48, secure: !isDebug, domain: 'geotab.com' });
+		}
+		sessvars['activeUser'] = null;
+		sessvars['credentials'] = null;
+
+
+		gmsApiCall({
+			method: "LogOffSession",
+			params: {
+				sessionId: sessionId
+			}
+		});
+
+		window.location.href = myLocation;
+	};
+
+	self.loadHeader = function () {
+		var activeUser = sessvars['activeUser'];
+		if (activeUser == null) {
+			throw {
+				name: "Invalid User",
+				error: "User is null or invalid!"
+			};
+		}
+		self.loadActiveToolbar(activeUser);
+		$(".entire-logo-links-container>input:button, .entire-logo-links-container>input:submit .entire-logo-links-container>a").button();
+		/*if (activeUser['isInternal']) {
+		 $(document.body).addClass("body-banner-internal");
+		 }
+		 else {*/
+		//$(document.body).addClass("body-banner");
+		/*}*/
+		$("#loggedInState_logoutButtonId").on("click", function () {
+			self.logoff(callingTarget);
+		});
+	};
+
+	self.activeStore = function () {
+		return activeCredentials.activeStore;
+	};
+
+	self.activeUser = function () {
+		return activeCredentials.activeUser;
+	};
+
+	self.account = function (dbId, accountNo) {
+		for (var i = 0; i < accountList.length; i++) {
+			var ac = accountList[i];
+			if (dbId > 0 && dbId == ac.id) {
+				return ac;
+			}
+			else if (accountNo.toUpperCase() == ac.accountId) {
+				return ac;
+			}
+		}
+		return null;
+	};
+
+	self.allAccounts = function () {
+		if (!self.activeUser()['isInternal']) {
+			return null;
+		}
+		return accountList;
+	};
+
+	self.allAccountNos = function () {
+		if (!self.activeUser()['isInternal']) {
+			return null;
+		}
+		if (accountNos && accountNos.length > 0) {
+			return accountNos;
+		}
+		accountNos = [];
+		for (var i = 0; i < accountList; i++) {
+			accountNos.push(accountList[i].accountId);
+		}
+		return accountNos;
+	};
+
+	self.allRoles = function () {
+		if (roleList == null) {
+			getRolesForUser(self.sessionId, function (results) {
+				roleList = results;
+				return roleList;
+			}, function () {
+				return null;
+			});
+		}
+		else {
+			return roleList;
+		}
+	};
+
+	self.getTranslationStore = function () {
+		return translationStore;
+	};
+
+	// Execution point
+	var $body = $('body');
+	// Hack for IE7
+	var currentHeight = $body.height();
+	if (currentHeight < 100) {
+		$body.height('Auto');
+	}
+	authenticateUser(function () {
+		self.getAccountOptions(self.sessionId, null, function (results) {
+			acOpList = results;
+			if (acOpList == null) {
+				acOpList = [];
+			}
+			if (!self.isUserAllowed(activeCredentials.activeUser, roles, false)) {
+				self.logoff('error.htm?reason=UnauthorizedAccess&username=' + activeCredentials.activeUser.name + '&role=' + roleString + '&source=' + callingTarget.pathname);
+			}
+			self.acceptedAccountAgreements(activeCredentials.activeUser, store, function () {
+				// user is authenticated, set account options of user
+				var u = self.activeUser();
+				self.setAccountOptionsForUser(u, function () {
+					translationStore = new TranslationStore();
+					translationStore.initialize(u.language, function (result) {
+						langDictionary = result;
+						if (translationStore.getLang() == 'ja') {
+							var sheet = (function () {
+								var sheets = document.styleSheets;
+								return sheets[sheets.length - 1];
+							})();
+							for (var i = 0; i < sheet.cssRules.length; i++) {
+								if (sheet.cssRules[i].cssText.indexOf("font-family") != -1) {
+									sheet.deleteRule(i);
+									break;
+								}
+							}
+							sheet.insertRule('body, input, textarea, select, input.ui-button, .ui-button, .ui-button-text, .ui-widget {font-family : "ヒラギノ角ゴ ProN", "Hiragino Kaku Gothic ProN", "メイリオ", Meiryo, "游ゴシック", "游ゴシック体", YuGothic, "Yu Gothic", "ＭＳ ゴシック", "MS Gothic", HiraKakuProN-W3, "TakaoExゴシック", TakaoExGothic, "MotoyaLCedar", "Droid Sans Japanese", sans-serif !important;}', 0);
+						}
+						if ($body.isMasked()) {
+							$body.unmask();
+						}
+						if (injectHeader) {
+							if ($("#headerDiv").length == 0) {
+								this.loadHeader();
+							}
+							self.updateOrderBasket();
+						}
+						// load full account list
+						getRolesForUser(self.sessionId, function (result) {
+							roleList = result;
+							getAccountsForUser(self.sessionId, function (result) {
+								accountList = result;
+								checkForNotification(this, function () {
+									if (onCompletion) {
+										onCompletion(self);
+									}
+								});
+							}, function (error) {
+								alert(parseError(error));
+							});
+						}, function (error) {
+							alert(parseError(error));
+						});
+					}, '');
+					self.acceptedDirectSupportAgreements(activeCredentials.activeUser, store, function () { });
+				});
+			});
+		}, function (error) {
+			$.popupMessage(1, parseError(error));
+		});
+	});
+};
+
+var parseError = function (error) {
+	var err = 'Unknown Error';
+	if (error) {
+		if (error.message) {
+			err = error.message;
+		}
+		else if (error.responseText) {
+			err = error.responseText;
+		}
+		else {
+			err = error.toString();
+		}
+	}
+	var errConst = "System.Web.Services.Protocols.SoapException: Server was unable to process request. ---> System.Exception: ";
+	err = err.replace(errConst, "");
+	var errs = err.split("\n");
+	var cleanError = errs[0];
+	// Split out generic call stack
+	var errs0 = cleanError.split(":");
+	if (errs0 && errs0.length > 1) {
+		var e = '';
+		for (var i = 0; i < errs0.length; i++) {
+			errs0[i] = errs0[i].replace(/'/g, "").trim();
+			if (errs0[i].trim().startsWith('WebServerInvoker') || errs0[i].trim().startsWith("Exception")) {
+				continue;
+			}
+			e += (e == '' ? '' : ': ') + errs0[i];
+		}
+		if (e != '') {
+			cleanError = e;
+		}
+	}
+	// Specific Error
+	if (cleanError.indexOf("Unauthorized") != -1) {
+		return "You are not authorized to perform this task!";
+	}
+	return cleanError;
+};
+
+// ErpList
+(function ($) {
+	$.setAutocomplete = function ($div, accounts, onSelect) {
+		var $input = $div.find('input');
+		if (!$input || $input.length == 0) {
+			return null;
+		}
+		if (!accounts || accounts.length == 0) {
+			return;
+		}
+		var displayData = [];
+		for (var i = 0; i < accounts.length; i++) {
+			displayData.push(accounts[i].accountId);
+		}
+		try {
+			billingExecute
+			$input['autocomplete']({
+				source: displayData,
+				minLength: 1,
+				select: function (event, ui) {
+					$input.val(ui.item.value);
+					if (onSelect) {
+						onSelect();
+					}
+				}
+			});
+		}
+		catch (ex) {
+
+		}
+	};
+	$.isInternalMode = function ($div) {
+		var $input = $div.find('input');
+		return $input && $input.length > 0;
+	};
+	$.erpList = function ($div, userStore, options, id) {
+		if (!$div) {
+			throw "Element is not valid!";
+		}
+		var strId = "";
+		if (id != null && id != "") {
+			strId = id + "_erpList";
+		} else {
+			strId = "erpList";
+		}
+		var html = [];
+		var user = userStore.activeUser();
+		var translationStore = userStore.getTranslationStore();
+		var isInternal = user['isInternal'];
+		if (isInternal) {
+			html.push('<input type="text" class ="required" id="' + strId + '" placeholder="' + translationStore.getString('ERP Account #') + '" title="' + translationStore.getString('Enter a valid ERP account') + '" />');
+		}
+		else {
+			var mustHide = options && options.autoHide === true && user.accounts !== undefined && user.accounts.length == 1;
+			var hideCss = (mustHide ? " style='display:none;'" : "");
+			html.push('<select' + hideCss + ' id="' + strId + '">');
+			if (!mustHide && user.accounts && user.accounts.length > 0 && options && options.showAllOption === true) {
+				html.push('<option value="-1">[' + translationStore.getString('All Accounts') + ']</option>');
+			}
+			$.each(user.accounts, function (key, value) {
+				html.push('<option value="' + value.id + '">' + value.accountId + '</option>');
+			});
+			html.push('</select>');
+			// Hide any label linked to the div
+			if (mustHide) {
+				var $label = $('label[for=' + $div.attr('id') + ']');
+				if ($label && $label.length > 0) {
+					$label.hide();
+				}
+			}
+		}
+		$div.html(html.join(''));
+		if (!options || options.length == 0) {
+			return;
+		}
+		var defaultAccountId = 0;
+		if (options.defaultAccountId && options.defaultAccountId > 0) {
+			defaultAccountId = options.defaultAccountId;
+		}
+		else if (user.defaultAccountId && user.defaultAccountId > 0) {
+			defaultAccountId = user.defaultAccountId;
+		}
+
+		if (isInternal) {
+			var $input = $div.find('input');
+			var allAccounts =
+				// Set Options
+				$.setAutocomplete($div, userStore.allAccounts(), options.onChanged);
+			if (options.disabled) {
+				$input.attr('disabled', 'disabled');
+			}
+			else {
+				$input.prop('disabled', false);
+			}
+			if (options.defaultAccountNo) {
+				$input.val(options.defaultAccountNo);
+			}
+			else if (defaultAccountId > 0) {
+				var ta = userStore.account(defaultAccountId, '');
+				if (ta) {
+					$input.val(ta.accountId);
+				}
+			}
+			$input.on("keyup", function () {
+				var val = $div.find('input').val();
+				var regCode = /[A-z]{4}[0-9]{2}/;
+				if (val.match(regCode) && $.inArray(val, userStore.allAccountNos())) {
+					if (options.onChanged) {
+						options.onChanged(val);
+					}
+				}
+				else if (options.onInvalid) {
+					options.onInvalid();
+				}
+			});
+			$input.on("blur", function () {
+				$input.val($input.val().toUpperCase());
+			});
+		}
+		else {
+			var $select = $div.find('select');
+			// Set Options
+			$select.attr('title', translationStore.getString('Reseller Accounts List'));
+			if (options.disabled) {
+				$select.attr('disabled', 'disabled');
+			}
+			else {
+				$select.prop('disabled', false);
+			}
+			if (options.defaultAccountNo) {
+				var defaultAccountNo = options.defaultAccountNo;
+				$select.find('option').each(function () {
+					var accountId = $(this).text();
+					if (accountId == defaultAccountNo) {
+						$(this).attr('selected', 'selected');
+					}
+				});
+			}
+			else if (defaultAccountId > 0) {
+				$select.find('option').each(function () {
+					var dbId = $(this).attr('value');
+					if (dbId == defaultAccountId) {
+						$(this).attr('selected', 'selected');
+					}
+				});
+			}
+			$select.on("change", function () {
+				if (options.onChanged) {
+					options.onChanged();
+				}
+			});
+			/*if (options.onChanged) {
+			 options.onChanged();
+			 }*/
+		}
+	};
+	$.erpList.defaults = { defaultAccountNo: '', defaultAccountId: 0, disabled: false, showAllOption: false, autoHide: true, onChanged: '', onInvalid: '' };
+	$.erpNumber = function ($div, accountNo) {
+		var internalMode = $.isInternalMode($div);
+		if (accountNo) {
+			if (internalMode) {
+				$div.find('input').val(accountNo);
+				return accountNo;
+			}
+			else {
+				$div.find('select').find('option').each(function () {
+					var accountId = $(this).text();
+					if (accountId == accountNo) {
+						$(this).attr('selected', 'selected');
+					} else {
+						$(this).prop('selected', false);
+					}
+				});
+				return accountNo;
+			}
+		}
+		else {
+			if (internalMode) {
+				return $div.find('input').val().toUpperCase();
+			}
+			else {
+				var $item = $div.find('select').find('option:selected');
+				if ($item.val() == "-1") {
+					return '';
+				}
+				return $item.text().toUpperCase();
+				//return $div.find('select').find('option:selected').text().toUpperCase();
+			}
+		}
+	};
+	$.erpAccount = function ($div, userStore) {
+		var erpNo = $.erpNumber($div);
+		if (!erpNo || erpNo.length == 0) {
+			return null;
+		}
+		if ($.isInternalMode($div)) {
+			return userStore.account(-1, erpNo);
+		}
+		else {
+			var user = userStore.activeUser();
+			for (var i = 0; i < user.accounts.length; i++) {
+				var account = user.accounts[i];
+				if (account.accountId.toString() === erpNo) {
+					return account;
+				}
+			}
+		}
+		return null;
+	};
+	$.fn.erpList = function (userStore, options, id) {
+		// Return the Account No if no options
+		var $div = $(this);
+		var user = userStore.activeUser();
+		if (!user && !options) {
+			return $.erpNumber($div);
+		}
+		if (!user) {
+			throw "Invalid Web User";
+		}
+		options = $.extend({}, $.erpList.defaults, options || {});
+		return this.each(function () {
+			new $.erpList($div, userStore, options, id);
+		});
+	};
+	$.fn.set = function (accountNo) {
+		$.erpNumber($(this), accountNo);
+	};
+	$.fn.erpAccount = function (userStore) {
+		return $.erpAccount($(this), userStore);
+	};
+	$.fn.erpNumber = function () {
+		return $.erpNumber($(this));
+	};
+})(jQuery);
+
+var stringifyV2 = typeof (JSON) === "object" && typeof (JSON.stringify) === "function" ? JSON.stringify : function (value) {
+	function f(n) {
+		return n < 10 ? '0' + n : n;
+	}
+
+	var escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+		meta = {
+			'\b': '\\b',
+			'\t': '\\t',
+			'\n': '\\n',
+			'\f': '\\f',
+			'\r': '\\r',
+			'"': '\\"',
+			'\\': '\\\\'
+		};
+
+	function quote(string) {
+		escapable.lastIndex = 0;
+		return escapable.test(string) ?
+			'"' + string.replace(escapable, function (a) {
+				var c = meta[a];
+				return typeof c === 'string' ? c :
+					'\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+			}) + '"' :
+			'"' + string + '"';
+	}
+
+	function str(key, holder) {
+		var i, k, v, length, partial,
+			value = holder[key];
+		switch (typeof value) {
+			case 'string':
+				return quote(value);
+			case 'number':
+				return isFinite(value) ? String(value) : 'null';
+			case 'boolean':
+				return String(value);
+			case 'object':
+				if (!value) {
+					return 'null';
+				}
+				if (value.constructor === Date) {
+					return isFinite(value) ?
+						value.getUTCFullYear() + '-' +
+						f(value.getUTCMonth() + 1) + '-' +
+						f(value.getUTCDate()) + 'T' +
+						f(value.getUTCHours()) + ':' +
+						f(value.getUTCMinutes()) + ':' +
+						f(value.getUTCSeconds()) + 'Z' : null;
+				}
+				partial = [];
+				if (Object.prototype.toString.apply(value) === '[object Array]') {
+					length = value.length;
+					for (i = 0; i < length; i += 1) {
+						partial[i] = str(i, value) || 'null';
+					}
+					v = partial.length === 0 ? '[]' : '[' + partial.join(',') + ']';
+					return v;
+				}
+
+				for (k in value) {
+					if (Object.hasOwnProperty.call(value, k)) {
+						v = str(k, value);
+						if (v) {
+							partial.push(quote(k) + ':' + v);
+						}
+					}
+				}
+				v = partial.length === 0 ? '{}' : '{' + partial.join(',') + '}';
+				return v;
+		}
+	}
+
+	return encodeURIComponent(str('', { '': value }));
+};
+
+//BETA Loading options
+var betaLoadExecute = function ($container) {
+
+	var betaload = getQueryStringValue()["beta"];
+	if (betaload == null && MyTools.Json.getJsonFromQueryString() != null) {
+		betaload = MyTools.Json.getJsonFromQueryString()["beta"];
+	}
+	if (betaload != null) {
+		isBeta = true;
+		var linkbar = document.getElementById('links-in-blue-line');
+		var logoLink = document.getElementById('entire-logo-links-container');
+		linkbar.style.display = "none";
+		logoLink.style.display = "none";
+	}
+};
+function getQueryStringValue() {
+	var vars = [], hash;
+	var hashes = window.location.href.slice(window.location.href.indexOf('?') + 1).split('&');
+	for (var i = 0; i < hashes.length; i++) {
+		hash = hashes[i].split('=');
+		vars.push(hash[0]);
+		vars[hash[0]] = hash[1];
+	}
+	return vars;
+}
+
+function getServerAPI() {
+	var url = window.location.protocol + "//" + window.location.host;
+	return url;
+}
+
+window.updateLanguage = function (lang) {
+	sessvars.activeUser.language = lang;
+}
+
+window.logoffLegacy = function () {
+	sessvars['activeUser'] = null;
+	sessvars['credentials'] = null;
+}
+
+function htmlDecode(input) {
+	var e = document.createElement('div');
+	e.innerHTML = input;
+	return e.childNodes[0].nodeValue;
+}
