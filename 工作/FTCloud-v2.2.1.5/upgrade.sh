@@ -49,12 +49,12 @@ init_param() {
   HEAD_INFO=" FTCloud一键升级脚本 [v${SH_VERSION}]
     ---- jiangyuanchen | sisyphus.tech ----"
   #模块是否升级的标志
-  upgrade_base_flag=true
+  upgrade_base_flag=false
   upgrade_report_flag=false
   #  upgrade_S17_flag=false
   upgrade_devops_flag=false
   upgrade_freight_flag=false
-  upgrade_database_flag=true
+  upgrade_database_flag=false
   #是否清理屏幕
   CLEAR_SCREEN='true'
   #升级前版本
@@ -239,6 +239,28 @@ device.face.alarm.flag=true" >>${freight_service}/config/application.properties
   done
 }
 
+#升级基础服务
+rollback_base_service() {
+  if [[ ${upgrade_base_flag} == "false" ]]; then
+    _info "Skip rollback [${base_services[*]}]......"
+    return
+  fi
+
+  for base_service in ${base_services[*]}; do
+    base_service=${base_service_prefix}${base_service}
+    _info "rollback [${base_service}]......"
+
+    cd ${base_install_location} || exit 1
+    rm -rf ${base_service}
+    mkdir ${base_service}
+    \cp -rf ${base_service}${backup_service_format} ${base_service}
+    chown -R streamax:streamax ${base_service}
+    chmod a+x ${base_install_location}/${base_service}/bin/*.sh
+
+    _info "rollback [${base_service}] success!!!"
+  done
+}
+
 #升级货运上层服务
 upgrade_freight() {
   if [[ ${upgrade_freight_flag} == "false" ]]; then
@@ -287,6 +309,42 @@ filter.alarm.type=96" >>${freight_service}/config/application.properties
   done
 }
 
+#回滚货运上层服务
+rollback_freight() {
+  if [[ ${upgrade_freight_flag} == "false" ]]; then
+    _info "Skip rollback [${freight_services[*]}]......"
+    return
+  fi
+
+  for freight_service in ${freight_services[*]}; do
+    _info "rollback [${freight_service}]......"
+
+    case "${freight_service}" in
+    freight-server)
+      cd ${freight_install_location}/server || exit 1
+      rm -rf ${freight_service}
+      mkdir ${freight_service}
+      \cp -rf ${freight_service}${backup_service_format} ${freight_service}
+      chown -R streamax:streamax ${freight_service}
+      chmod a+x ${freight_install_location}/server/${freight_service}/bin/*.sh
+      ;;
+    ftvision-web | ftmanager-web)
+      cd ${freight_install_location}/nodeweb || exit 1
+      rm -rf ${freight_service}
+      mkdir ${freight_service}
+      \cp -rf ${freight_service}${backup_service_format} ${freight_service}
+      chown -R streamax:streamax ${freight_service}
+      chmod a+x ${freight_install_location}/nodeweb/${freight_service}/bin/*.sh
+      ;;
+    *)
+      _error "INVALID \${freight_service}=${freight_service}"
+      ;;
+    esac
+
+    _info "rollback [${freight_service}] success!!!"
+  done
+}
+
 #升级报表服务
 upgrade_report() {
   if [[ ${upgrade_report_flag} == "false" ]]; then
@@ -308,6 +366,24 @@ upgrade_report() {
   chmod a+x ${report_install_location}/${report_service}/bin/*.sh
 
   _info "Upgrade [${report_service}] success!!!"
+}
+
+#回滚报表服务
+rollback_report() {
+  if [[ ${upgrade_report_flag} == "false" ]]; then
+    _info "Skip rollback [${report_service}]......"
+    return
+  fi
+  _info "rollback [${report_service}]......"
+
+  cd ${report_install_location} || exit 1
+  rm -rf ${report_service}
+  mkdir ${report_service}
+  \cp -rf ${report_service}${backup_service_format} ${report_service}
+  chown -R streamax:streamax ${report_service}
+  chmod a+x ${report_install_location}/${report_service}/bin/*.sh
+
+  _info "rollback [${report_service}] success!!!"
 }
 
 upgrade_s17() {
@@ -360,6 +436,25 @@ schedule.sync.time=10" >>${devops_service}/config/application-pro.properties
   _info "Upgrade [${devops_service}] success!!!"
 }
 
+#回滚新运维服务
+rollback_devops() {
+  if [[ ${upgrade_devops_flag} == "false" ]]; then
+    _info "Skip rollback [${devops_service}]......"
+    return
+  fi
+
+  _info "rollback [${devops_service}]......"
+
+  cd ${devops_install_location} || exit 1
+  rm -rf ${devops_service}
+  mkdir ${devops_service}
+  \cp -rf ${devops_service}${backup_service_format} ${devops_service}
+  chown -R streamax:streamax ${devops_service}
+  chmod a+x ${devops_install_location}/${devops_service}/bin/*.sh
+
+  _info "rollback [${devops_service}] success!!!"
+}
+
 #删除升级包
 clean_package() {
   _info "Clean the upgrade resources......"
@@ -382,8 +477,8 @@ check_service() {
   fi
 
   _info "Check S17 services ......"
-  sh ${base_dir}/s17/script/install/get_S17_status.sh
-  if [[ $? -eq 0 ]]; then
+
+  if sh ${base_dir}/s17/script/install/get_S17_status.sh; then
     _info "Check S17 services pass!!!"
   else
     _error "Please check S17 services and try again."
@@ -420,8 +515,11 @@ check_service() {
 }
 
 rollback_all() {
-  _info 'developing......'
-  rollback_database
+    rollback_base
+    rollback_report
+    rollback_devops
+    rollback_freight
+    rollback_database
 }
 
 #关闭守护脚本
