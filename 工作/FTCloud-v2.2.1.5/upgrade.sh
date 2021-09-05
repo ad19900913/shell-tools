@@ -49,11 +49,12 @@ init_param() {
   HEAD_INFO=" FTCloud一键升级脚本 [v${SH_VERSION}]
     ---- jiangyuanchen | sisyphus.tech ----"
   #模块是否升级的标志
-  upgrade_base_flag=false
+  upgrade_base_flag=true
   upgrade_report_flag=false
   #  upgrade_S17_flag=false
   upgrade_devops_flag=false
   upgrade_freight_flag=false
+  upgrade_database_flag=true
   #是否清理屏幕
   CLEAR_SCREEN='true'
   #升级前版本
@@ -221,7 +222,7 @@ upgrade_base_service() {
     rm -f ${base_service}_*.tar.gz
     \cp -rf ${base_service}${backup_service_format}/config/* ${base_service}/config/
     case "${base_service}" in
-    base-platform-tap)
+    freight-base-platform-tap)
       #增加配置
       echo "
 #人脸处理开关
@@ -314,15 +315,19 @@ upgrade_s17() {
 }
 
 upgrade_database() {
-  _info "Upgrade database......"
+  if [[ ${upgrade_database_flag} == "false" ]]; then
+    _info "Skip upgrade [database]......"
+    return
+  fi
+  _info "Upgrade [database]......"
   mysql -uroot -h127.0.0.1 -p"$(cat /iotp/data/mariadb/.pswd)" -P13306 <${base_dir}/upgrade.sql
-  _info "Upgrade database success!!!"
+  _info "Upgrade [database] success!!!"
 }
 
 rollback_database() {
-  _info "Rollback database......"
+  _info "Rollback [database]......"
   mysql -uroot -h127.0.0.1 -p"$(cat /iotp/data/mariadb/.pswd)" -P13306 <${base_dir}/rollback.sql
-  _info "Rollback database success!!!"
+  _info "Rollback [database] success!!!"
 }
 
 #升级新运维服务
@@ -421,7 +426,13 @@ rollback_all() {
 
 #关闭守护脚本
 stop_daemon() {
-  kill -9 "$(ps -aux | grep iotp_daemon_freight | grep -v grep | awk '{print $2}')"
+  count=$(ps -aux | grep -c iotp_daemon_freight)
+  if [[ "${count}" == 1 ]]; then
+    kill -9 "$(ps -aux | grep iotp_daemon_freight | grep -v grep | awk '{print $2}')"
+    _info "Kill daemon script."
+  else
+     _info "No daemon script exist."
+  fi
 }
 
 #启动守护脚本
@@ -436,7 +447,7 @@ upgrade_all() {
   execute_services stop
   check_user
   check_version
-  uncompress_package
+#  uncompress_package
   _info '====================================prepare successed!!!=================================='
 
   #升级
