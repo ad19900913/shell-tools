@@ -45,6 +45,15 @@ _error() {
 init_param() {
   #升级脚本版本
   SH_VERSION=0.1
+  #抬头信息
+  HEAD_INFO=" FTCloud一键升级脚本 [v${SH_VERSION}]
+    ---- jiangyuanchen | sisyphus.tech ----"
+  #模块是否升级的标志
+  upgrade_base_flag=false
+  upgrade_report_flag=false
+  #  upgrade_S17_flag=false
+  upgrade_devops_flag=false
+  upgrade_freight_flag=false
   #是否清理屏幕
   CLEAR_SCREEN='true'
   #升级前版本
@@ -89,19 +98,11 @@ init_param() {
   #  base_services=('alarm' 'evidence' 'gateway' 'registry' 'server' 'tap')
   base_services=('server' 'tap' 'alarm')
 
-  #模块是否升级的标志
-  upgrade_base_flag=false
-  upgrade_report_flag=false
-  #  upgrade_S17_flag=false
-  upgrade_devops_flag=false
-  upgrade_freight_flag=false
-
-  _info " FTCloud一键升级脚本 [v${SH_VERSION}]
-    ---- jiangyuanchen | sisyphus.tech ----
+  _info "${HEAD_INFO}
   ———————————————升级信息如下—————————————————
   升级前版本：${ORIGINAL_VERSION}
   升级后版本：${NEW_VERSION}
-  ————————————————————————————————"
+  -------------------------------------------"
 }
 
 #判断当前用户是否是streamax或root
@@ -181,12 +182,12 @@ execute_services() {
 
   if [[ ${upgrade_report_flag} == "true" ]]; then
     #报表服务
-    _info "Start [${report_service}]......"
+    _info "${1} [${report_service}]......"
 
     cd ${report_install_location} || exit 1
     su - streamax -c "cd ${report_install_location}/${report_service}/bin && ./${1}.sh"
 
-    _info "Start [${report_service}] success!!!"
+    _info "${1} [${report_service}] success!!!"
   fi
 
   if [[ ${upgrade_devops_flag} == "true" ]]; then
@@ -202,6 +203,11 @@ execute_services() {
 
 #升级基础服务
 upgrade_base_service() {
+  if [[ ${upgrade_base_flag} == "false" ]]; then
+    _info "Skip upgrade [${base_services[*]}]......"
+    return
+  fi
+
   for base_service in ${base_services[*]}; do
     base_service=${base_service_prefix}${base_service}
     _info "Upgrade [${base_service}]......"
@@ -217,10 +223,11 @@ upgrade_base_service() {
     case "${base_service}" in
     base-platform-tap)
       #增加配置
-      echo '#人脸处理开关' >>${base_service}/config/application.properties
-      echo 'device.face.handle.flag=true' >>${freight_service}/config/application.properties
-      echo '#人脸对比失败报警开关' >>${base_service}/config/application.properties
-      echo 'device.face.alarm.flag=true' >>${freight_service}/config/application.properties
+      echo "
+#人脸处理开关
+device.face.handle.flag=true
+#人脸对比失败报警开关
+device.face.alarm.flag=true" >>${freight_service}/config/application.properties
       ;;
     *) ;;
     esac
@@ -229,11 +236,15 @@ upgrade_base_service() {
 
     _info "Upgrade [${base_service}] success!!!"
   done
-  upgrade_base_flag=true
 }
 
 #升级货运上层服务
 upgrade_freight() {
+  if [[ ${upgrade_freight_flag} == "false" ]]; then
+    _info "Skip upgrade [${freight_services[*]}]......"
+    return
+  fi
+
   for freight_service in ${freight_services[*]}; do
     _info "Upgrade [${freight_service}]......"
 
@@ -248,8 +259,9 @@ upgrade_freight() {
       rm -f ${freight_service}_*.tar.gz
       \cp -rf ${freight_service}${backup_service_format}/config/* ${freight_service}/config/
       #增加配置
-      echo '#需要过滤的报警回传配置的报警类型（证据相关页面不展示），逗号分隔' >>${freight_service}/config/application.properties
-      echo 'filter.alarm.type=96' >>${freight_service}/config/application.properties
+      echo "
+#需要过滤的报警回传配置的报警类型（证据相关页面不展示），逗号分隔
+filter.alarm.type=96" >>${freight_service}/config/application.properties
       chown -R streamax:streamax ${freight_service}
       chmod a+x ${freight_install_location}/server/${freight_service}/bin/*.sh
       ;;
@@ -272,11 +284,14 @@ upgrade_freight() {
 
     _info "Upgrade [${freight_service}] success!!!"
   done
-  upgrade_freight_flag=true
 }
 
 #升级报表服务
 upgrade_report() {
+  if [[ ${upgrade_report_flag} == "false" ]]; then
+    _info "Skip upgrade [${report_service}]......"
+    return
+  fi
   _info "Upgrade [${report_service}]......"
 
   cd ${report_install_location} || exit 1
@@ -292,7 +307,6 @@ upgrade_report() {
   chmod a+x ${report_install_location}/${report_service}/bin/*.sh
 
   _info "Upgrade [${report_service}] success!!!"
-  upgrade_report_flag=true
 }
 
 upgrade_s17() {
@@ -313,6 +327,11 @@ rollback_database() {
 
 #升级新运维服务
 upgrade_devops() {
+  if [[ ${upgrade_devops_flag} == "false" ]]; then
+    _info "Skip upgrade [${devops_service}]......"
+    return
+  fi
+
   _info "Upgrade [${devops_service}]......"
 
   cd ${devops_install_location} || exit 1
@@ -327,13 +346,13 @@ upgrade_devops() {
   #config.businessSystemConfig.queryVehicleListUrl=/api/v1.0/car/list
   sed -i -E "s#^\s*config.businessSystemConfig.queryVehicleListUrl=.*#config.businessSystemConfig.queryVehicleListUrl=/api/v1.0/car/list#g" ${devops_service}/config/application-pro.properties
   #增加定时任务配置
-  echo '##定时任务,时间单位为分钟' >>${devops_service}/config/application-pro.properties
-  echo 'schedule.sync.time=10' >>${devops_service}/config/application-pro.properties
+  echo "
+##定时任务,时间单位为分钟
+schedule.sync.time=10" >>${devops_service}/config/application-pro.properties
   chown -R streamax:streamax ${devops_service}
   chmod a+x ${devops_install_location}/${devops_service}/bin/*.sh
 
   _info "Upgrade [${devops_service}] success!!!"
-  upgrade_devops_flag=true
 }
 
 #删除升级包
@@ -383,6 +402,15 @@ check_service() {
     _error "Please check freight services and try again."
   fi
 
+  _info "Check web services ......"
+  pm2 list
+  count=$(pm2 list | grep -c online)
+  if [[ "${count}" == 4 ]]; then
+    _info "Check web services pass!!!"
+  else
+    _error "Please check web services and try again."
+  fi
+
   CLEAR_SCREEN=false
 }
 
@@ -406,18 +434,18 @@ upgrade_all() {
   _info '====================================prepare start......=================================='
   stop_daemon
   execute_services stop
-#  check_user
-#  check_version
+  check_user
+  check_version
   uncompress_package
   _info '====================================prepare successed!!!=================================='
 
   #升级
   _info '====================================upgrade start......=================================='
   upgrade_freight
-#  upgrade_report
-#  upgrade_base_service
+  upgrade_report
+  upgrade_base_service
   #upgrade_s17
-#  upgrade_devops
+  upgrade_devops
   upgrade_database
   _info '====================================upgrade successed!!!=================================='
 
@@ -428,8 +456,14 @@ upgrade_all() {
   check_service
   #clean_package
   _info '====================================business validation successed!!!=================================='
-  sleep 30s
+  sleep 10s
   start_daemon
+
+  CLEAR_SCREEN=false
+}
+
+configure(){
+  _info "developing......"
 }
 #======================业务函数区结束===========================
 
@@ -441,20 +475,18 @@ while true; do
     clear
   fi
   CLEAR_SCREEN="true"
-  _info " FTCloud一键升级脚本 [v${SH_VERSION}]
-      ---- jiangyuanchen | sisyphus.tech ----
-
-     0. 退出脚本
+  _info "${HEAD_INFO}
+    ———————————————请选择要执行的操作—————————————————
      1. 验证服务
      2. 回滚服务
      3. 升级服务
-     4. 执行
-     5. 设置基础工作目录
-    ————————————————————————————————" && echo
+     4. 配置脚本
+     q. 退出脚本
+    ------------------------------------------------" && echo
 
-  read -p " 请输入数字 [0-5]:" CHOOSE
+  read -r -p " 请输入数字 [0-5]:" CHOOSE
   case "${CHOOSE}" in
-  0)
+  q)
     exit 1
     ;;
   1)
@@ -467,10 +499,7 @@ while true; do
     upgrade_all
     ;;
   4)
-    confirm
-    ;;
-  5)
-    set_path
+    configure
     ;;
   *)
     clear
