@@ -579,16 +579,16 @@ configure(){
     clear
     _info "${HEAD_INFO}" && echo
 
-    read -p "是否更新base模块?(y/n)" upgrade_base_flag
+    read -r -p "是否更新base模块?(y/n)" upgrade_base_flag
     if [[ ${upgrade_base_flag} == "y" ]]
     then
         select_base_module
     fi
 
-    read -p "是否更新report模块?(y/n)" upgrade_report_flag
-    read -p "是否更新devops模块?(y/n)" upgrade_devops_flag
-    read -p "是否更新数据库?(y/n)" upgrade_database_flag
-    read -p "是否更新freight模块?(y/n)" upgrade_freight_flag
+    read -r -p "是否更新report模块?(y/n)" upgrade_report_flag
+    read -r -p "是否更新devops模块?(y/n)" upgrade_devops_flag
+    read -r -p "是否更新数据库?(y/n)" upgrade_database_flag
+    read -r -p "是否更新freight模块?(y/n)" upgrade_freight_flag
     if [[ ${upgrade_freight_flag} == "y" ]]
     then
         select_freight_module

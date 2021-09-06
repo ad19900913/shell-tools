@@ -3,7 +3,7 @@ ALTER TABLE baseplatform.`t_driver_face_compare_result` ADD COLUMN evt_id varcha
 ALTER TABLE baseplatform.`t_driver_face_compare_result` ADD INDEX IDX_EVTID ( `evt_id` );
 
 #t_alarm_config新增初始化配置
-INSERT INTO freight.`t_alarm_config` VALUES (35, 2, 96, 'DSM报警-人脸比对失败', 52, NULL, NULL, NULL, NULL, 0);
+INSERT INTO freight.`t_alarm_config` VALUES (35, 2, 96, '人脸比对失败', 52, NULL, NULL, NULL, NULL, 0);
 
 #t_multi_language新增初始化配置
 INSERT INTO freight.`t_multi_language` VALUES ('3c0071631ab5486884e9cbe5dfbd4410', 'Web', 'pt_BR', '96', '', 'A comparação de rosto falhou', 0, '2021-08-30 08:40:41', '2021-08-30 08:40:41', NULL, 0);
