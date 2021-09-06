@@ -22,19 +22,19 @@ _yellow() {
 
 _info() {
   _green "[INFO] "
-  printf -- "%s" "${1}"
+  printf -- "%s" "$(date '+%Y-%m-%d %H:%M:%S') - ${1}"
   printf "\n"
 }
 
 _warn() {
   _yellow "[WARN] "
-  printf -- "%s" "${1}"
+  printf -- "%s" "$(date '+%Y-%m-%d %H:%M:%S') - ${1}"
   printf "\n"
 }
 
 _error() {
   _red "[ERROR] "
-  printf -- "%s" "${1}"
+  printf -- "%s" "$(date '+%Y-%m-%d %H:%M:%S') - ${1}"
   printf "\n"
   exit 1
 }
@@ -49,12 +49,12 @@ init_param() {
   HEAD_INFO=" FTCloud一键升级脚本 [v${SH_VERSION}]
     ---- jiangyuanchen | sisyphus.tech ----"
   #模块是否升级的标志
-  upgrade_base_flag=false
-  upgrade_report_flag=false
-  #  upgrade_S17_flag=false
-  upgrade_devops_flag=false
-  upgrade_freight_flag=false
-  upgrade_database_flag=false
+  upgrade_base_flag=y
+  upgrade_report_flag=y
+  #  upgrade_S17_flag=n
+  upgrade_devops_flag=y
+  upgrade_freight_flag=y
+  upgrade_database_flag=y
   #是否清理屏幕
   CLEAR_SCREEN='true'
   #升级前版本
@@ -145,23 +145,23 @@ uncompress_package() {
 
 #启动各服务
 execute_services() {
-  if [[ ${upgrade_base_flag} == "true" ]]; then
+  if [[ ${upgrade_base_flag} == "y" ]]; then
     #基础服务
     for base_service in ${base_services[*]}; do
-      _info "${1} [${base_service}]......"
+      _info "${1^} [${base_service}]......"
 
       base_service=${base_service_prefix}${base_service}
       cd ${base_install_location} || exit 1
       su - streamax -c "cd ${base_install_location}/${base_service}/bin && ./${1}.sh"
 
-      _info "${1} [${base_service}] success!!!"
+      _info "${1^} [${base_service}] success!!!"
     done
   fi
 
-  if [[ ${upgrade_freight_flag} == "true" ]]; then
+  if [[ ${upgrade_freight_flag} == "y" ]]; then
     #货运服务
     for freight_service in ${freight_services[*]}; do
-      _info "${1} [${freight_service}]......"
+      _info "${1^} [${freight_service}]......"
 
       case "${freight_service}" in
       freight-server)
@@ -177,34 +177,34 @@ execute_services() {
         ;;
       esac
 
-      _info "${1} [${freight_service}] success!!!"
+      _info "${1^} [${freight_service}] success!!!"
     done
   fi
 
-  if [[ ${upgrade_report_flag} == "true" ]]; then
+  if [[ ${upgrade_report_flag} == "y" ]]; then
     #报表服务
-    _info "${1} [${report_service}]......"
+    _info "${1^} [${report_service}]......"
 
     cd ${report_install_location} || exit 1
     su - streamax -c "cd ${report_install_location}/${report_service}/bin && ./${1}.sh"
 
-    _info "${1} [${report_service}] success!!!"
+    _info "${1^} [${report_service}] success!!!"
   fi
 
-  if [[ ${upgrade_devops_flag} == "true" ]]; then
+  if [[ ${upgrade_devops_flag} == "y" ]]; then
     #新运维服务
-    _info "${1} [${devops_service}]......"
+    _info "${1^} [${devops_service}]......"
 
     cd ${devops_install_location} || exit 1
     su - streamax -c "cd ${devops_install_location}/${devops_service}/bin && ./${1}.sh"
 
-    _info "${1} [${devops_service}] success!!!"
+    _info "${1^} [${devops_service}] success!!!"
   fi
 }
 
 #升级基础服务
 upgrade_base_service() {
-  if [[ ${upgrade_base_flag} == "false" ]]; then
+  if [[ ${upgrade_base_flag} == "n" ]]; then
     _info "Skip upgrade [${base_services[*]}]......"
     return
   fi
@@ -228,7 +228,7 @@ upgrade_base_service() {
 #人脸处理开关
 device.face.handle.flag=true
 #人脸对比失败报警开关
-device.face.alarm.flag=true" >>${freight_service}/config/application.properties
+device.face.alarm.flag=true" >>${base_service}/config/application.properties
       ;;
     *) ;;
     esac
@@ -240,30 +240,30 @@ device.face.alarm.flag=true" >>${freight_service}/config/application.properties
 }
 
 #升级基础服务
-rollback_base_service() {
-  if [[ ${upgrade_base_flag} == "false" ]]; then
+rollback_base() {
+  if [[ ${upgrade_base_flag} == "n" ]]; then
     _info "Skip rollback [${base_services[*]}]......"
     return
   fi
 
   for base_service in ${base_services[*]}; do
     base_service=${base_service_prefix}${base_service}
-    _info "rollback [${base_service}]......"
+    _info "Rollback [${base_service}]......"
 
     cd ${base_install_location} || exit 1
     rm -rf ${base_service}
     mkdir ${base_service}
-    \cp -rf ${base_service}${backup_service_format} ${base_service}
+    \cp -rf ${base_service}${backup_service_format}/* ${base_service}/
     chown -R streamax:streamax ${base_service}
     chmod a+x ${base_install_location}/${base_service}/bin/*.sh
 
-    _info "rollback [${base_service}] success!!!"
+    _info "Rollback [${base_service}] success!!!"
   done
 }
 
 #升级货运上层服务
 upgrade_freight() {
-  if [[ ${upgrade_freight_flag} == "false" ]]; then
+  if [[ ${upgrade_freight_flag} == "n" ]]; then
     _info "Skip upgrade [${freight_services[*]}]......"
     return
   fi
@@ -311,20 +311,20 @@ filter.alarm.type=96" >>${freight_service}/config/application.properties
 
 #回滚货运上层服务
 rollback_freight() {
-  if [[ ${upgrade_freight_flag} == "false" ]]; then
+  if [[ ${upgrade_freight_flag} == "n" ]]; then
     _info "Skip rollback [${freight_services[*]}]......"
     return
   fi
 
   for freight_service in ${freight_services[*]}; do
-    _info "rollback [${freight_service}]......"
+    _info "Rollback [${freight_service}]......"
 
     case "${freight_service}" in
     freight-server)
       cd ${freight_install_location}/server || exit 1
       rm -rf ${freight_service}
       mkdir ${freight_service}
-      \cp -rf ${freight_service}${backup_service_format} ${freight_service}
+      \cp -rf ${freight_service}${backup_service_format}/* ${freight_service}/
       chown -R streamax:streamax ${freight_service}
       chmod a+x ${freight_install_location}/server/${freight_service}/bin/*.sh
       ;;
@@ -332,7 +332,7 @@ rollback_freight() {
       cd ${freight_install_location}/nodeweb || exit 1
       rm -rf ${freight_service}
       mkdir ${freight_service}
-      \cp -rf ${freight_service}${backup_service_format} ${freight_service}
+      \cp -rf ${freight_service}${backup_service_format}/* ${freight_service}/
       chown -R streamax:streamax ${freight_service}
       chmod a+x ${freight_install_location}/nodeweb/${freight_service}/bin/*.sh
       ;;
@@ -341,13 +341,13 @@ rollback_freight() {
       ;;
     esac
 
-    _info "rollback [${freight_service}] success!!!"
+    _info "Rollback [${freight_service}] success!!!"
   done
 }
 
 #升级报表服务
 upgrade_report() {
-  if [[ ${upgrade_report_flag} == "false" ]]; then
+  if [[ ${upgrade_report_flag} == "n" ]]; then
     _info "Skip upgrade [${report_service}]......"
     return
   fi
@@ -370,20 +370,20 @@ upgrade_report() {
 
 #回滚报表服务
 rollback_report() {
-  if [[ ${upgrade_report_flag} == "false" ]]; then
+  if [[ ${upgrade_report_flag} == "n" ]]; then
     _info "Skip rollback [${report_service}]......"
     return
   fi
-  _info "rollback [${report_service}]......"
+  _info "Rollback [${report_service}]......"
 
   cd ${report_install_location} || exit 1
   rm -rf ${report_service}
   mkdir ${report_service}
-  \cp -rf ${report_service}${backup_service_format} ${report_service}
+  \cp -rf ${report_service}${backup_service_format}/* ${report_service}/
   chown -R streamax:streamax ${report_service}
   chmod a+x ${report_install_location}/${report_service}/bin/*.sh
 
-  _info "rollback [${report_service}] success!!!"
+  _info "Rollback [${report_service}] success!!!"
 }
 
 upgrade_s17() {
@@ -391,7 +391,7 @@ upgrade_s17() {
 }
 
 upgrade_database() {
-  if [[ ${upgrade_database_flag} == "false" ]]; then
+  if [[ ${upgrade_database_flag} == "n" ]]; then
     _info "Skip upgrade [database]......"
     return
   fi
@@ -401,6 +401,10 @@ upgrade_database() {
 }
 
 rollback_database() {
+  if [[ ${upgrade_database_flag} == "n" ]]; then
+    _info "Skip rollback [database]......"
+    return
+  fi
   _info "Rollback [database]......"
   mysql -uroot -h127.0.0.1 -p"$(cat /iotp/data/mariadb/.pswd)" -P13306 <${base_dir}/rollback.sql
   _info "Rollback [database] success!!!"
@@ -408,7 +412,7 @@ rollback_database() {
 
 #升级新运维服务
 upgrade_devops() {
-  if [[ ${upgrade_devops_flag} == "false" ]]; then
+  if [[ ${upgrade_devops_flag} == "n" ]]; then
     _info "Skip upgrade [${devops_service}]......"
     return
   fi
@@ -438,21 +442,21 @@ schedule.sync.time=10" >>${devops_service}/config/application-pro.properties
 
 #回滚新运维服务
 rollback_devops() {
-  if [[ ${upgrade_devops_flag} == "false" ]]; then
+  if [[ ${upgrade_devops_flag} == "n" ]]; then
     _info "Skip rollback [${devops_service}]......"
     return
   fi
 
-  _info "rollback [${devops_service}]......"
+  _info "Rollback [${devops_service}]......"
 
   cd ${devops_install_location} || exit 1
   rm -rf ${devops_service}
   mkdir ${devops_service}
-  \cp -rf ${devops_service}${backup_service_format} ${devops_service}
+  \cp -rf ${devops_service}${backup_service_format}/* ${devops_service}/
   chown -R streamax:streamax ${devops_service}
   chmod a+x ${devops_install_location}/${devops_service}/bin/*.sh
 
-  _info "rollback [${devops_service}] success!!!"
+  _info "Rollback [${devops_service}] success!!!"
 }
 
 #删除升级包
@@ -524,7 +528,7 @@ rollback_all() {
 
 #关闭守护脚本
 stop_daemon() {
-  count=$(ps -aux | grep -c iotp_daemon_freight)
+  count=$(ps -aux | grep -v grep | grep -c iotp_daemon_freight)
   if [[ "${count}" == 1 ]]; then
     kill -9 "$(ps -aux | grep iotp_daemon_freight | grep -v grep | awk '{print $2}')"
     _info "Kill daemon script."
@@ -545,7 +549,7 @@ upgrade_all() {
   execute_services stop
   check_user
   check_version
-#  uncompress_package
+  uncompress_package
   _info '====================================prepare successed!!!=================================='
 
   #升级
@@ -572,7 +576,24 @@ upgrade_all() {
 }
 
 configure(){
-  _info "developing......"
+    clear
+    _info "${HEAD_INFO}" && echo
+
+    read -p "是否更新base模块?(y/n)" upgrade_base_flag
+    if [[ ${upgrade_base_flag} == "y" ]]
+    then
+        select_base_module
+    fi
+
+    read -p "是否更新report模块?(y/n)" upgrade_report_flag
+    read -p "是否更新devops模块?(y/n)" upgrade_devops_flag
+    read -p "是否更新数据库?(y/n)" upgrade_database_flag
+    read -p "是否更新freight模块?(y/n)" upgrade_freight_flag
+    if [[ ${upgrade_freight_flag} == "y" ]]
+    then
+        select_freight_module
+    fi
+
 }
 #======================业务函数区结束===========================
 
@@ -602,7 +623,7 @@ while true; do
     check_service
     ;;
   2)
-    rollback
+    rollback_all
     ;;
   3)
     upgrade_all
