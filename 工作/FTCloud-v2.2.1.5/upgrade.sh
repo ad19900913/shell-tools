@@ -44,9 +44,9 @@ _error() {
 #初始化一些参数
 init_param() {
   #升级脚本版本
-  SH_VERSION=0.1
+  sh_version=0.1
   #抬头信息
-  HEAD_INFO=" FTCloud一键升级脚本 [v${SH_VERSION}]
+  head_info=" FTCloud一键升级脚本 [v${sh_version}]
     ---- jiangyuanchen | sisyphus.tech ----"
   #模块是否升级的标志
   upgrade_base_flag=y
@@ -56,23 +56,23 @@ init_param() {
   upgrade_freight_flag=y
   upgrade_database_flag=y
   #是否清理屏幕
-  CLEAR_SCREEN='true'
+  clear_screen='true'
   #升级前版本
-  ORIGINAL_VERSION='2.2.1.4'
+  original_version='2.2.1.4'
   #升级后版本
-  NEW_VERSION='2.2.1.5'
+  new_version='2.2.1.5'
   #  NEW_REPORT_VERSION='1.0.3'
   #  NEW_DEVOPS_VERSION='V2.1.3.0_p3'
   #  NEW_BASE_VERSION='1.0.2.2'
   #  NEW_S17_VERSION='S17-V2.0.5.8N'
   #有效用户
-  UPGRADE_USERS=('streamax' 'root')
+  upgrade_users=('streamax' 'root')
   #升级日期
   upgrade_date=$(date "+%Y%m%d")
   #备份包命名格式
   backup_service_format=_bak${upgrade_date}
   #升级包名称
-  upgrade_package_name=Release_FTCloud_normal_V${NEW_VERSION}_multi
+  upgrade_package_name=Release_FTCloud_normal_V${new_version}_multi
   #基础目录
   base_dir=/iotp
   upgrade_package_location=${base_dir}/${upgrade_package_name}.zip
@@ -98,18 +98,12 @@ init_param() {
   base_service_prefix='freight-base-platform-'
   #  base_services=('alarm' 'evidence' 'gateway' 'registry' 'server' 'tap')
   base_services=('server' 'tap' 'alarm')
-
-  _info "${HEAD_INFO}
-  ———————————————升级信息如下—————————————————
-  升级前版本：${ORIGINAL_VERSION}
-  升级后版本：${NEW_VERSION}
-  -------------------------------------------"
 }
 
 #判断当前用户是否是streamax或root
 check_user() {
   USER=$(whoami)
-  if [[ ! "${UPGRADE_USERS[*]}" =~ ${USER} ]]; then
+  if [[ ! "${upgrade_users[*]}" =~ ${USER} ]]; then
     _error "You must use root or streamax to upgrade!!!"
   else
     _info "Current user is ${USER}"
@@ -118,11 +112,11 @@ check_user() {
 
 #判断服务器当前版本
 check_version() {
-  count=$(ls ${base_dir}/freight/server/freight-server/dist_lib/*${ORIGINAL_VERSION}.jar | wc -l)
+  count=$(ls ${base_dir}/freight/server/freight-server/dist_lib/*${original_version}.jar | wc -l)
   if [[ "${count}" == 0 ]]; then
-    _error "Current freight version is not ${ORIGINAL_VERSION}!!!"
+    _error "Current freight version is not ${original_version}!!!"
   fi
-  _info "Current freight version is ${ORIGINAL_VERSION}"
+  _info "Current freight version is ${original_version}"
 }
 
 #解压升级包
@@ -277,7 +271,7 @@ upgrade_freight() {
       rm -rf ${freight_service}${backup_service_format}
       mv ${freight_service} ${freight_service}${backup_service_format}
       mkdir -p ${freight_service}
-      mv ${base_dir}/${upgrade_package_name}/FTCloud_normal_V${NEW_VERSION}/freight/${freight_service}* ${freight_install_location}/server
+      mv ${base_dir}/${upgrade_package_name}/FTCloud_normal_V${new_version}/freight/${freight_service}* ${freight_install_location}/server
       tar -zxf ${freight_service}_*.tar.gz -C ${freight_service}
       rm -f ${freight_service}_*.tar.gz
       \cp -rf ${freight_service}${backup_service_format}/config/* ${freight_service}/config/
@@ -293,7 +287,7 @@ filter.alarm.type=96" >>${freight_service}/config/application.properties
       rm -rf ${freight_service}${backup_service_format}
       mv ${freight_service} ${freight_service}${backup_service_format}
       mkdir -p ${freight_service}
-      mv ${base_dir}/${upgrade_package_name}/FTCloud_normal_V${NEW_VERSION}/freight/${freight_service}* ${freight_install_location}/nodeweb
+      mv ${base_dir}/${upgrade_package_name}/FTCloud_normal_V${new_version}/freight/${freight_service}* ${freight_install_location}/nodeweb
       tar -zxf ${freight_service}_*.tar.gz -C .
       rm -f ${freight_service}_*.tar.gz
       \cp -rf ${freight_service}${backup_service_format}/config.json ${freight_service}
@@ -423,7 +417,7 @@ upgrade_devops() {
   rm -rf ${devops_service}${backup_service_format}
   mv ${devops_service} ${devops_service}${backup_service_format}
   mkdir ${devops_service}
-  mv /iotp/Release_FTCloud_normal_V${NEW_VERSION}_multi/devops_normal_*/${devops_service}_*.tar.gz ${devops_service}
+  mv /iotp/Release_FTCloud_normal_V${new_version}_multi/devops_normal_*/${devops_service}_*.tar.gz ${devops_service}
   tar -zxf ${devops_service}/${devops_service}_*.tar.gz -C ${devops_service}
   rm -f ${devops_service}/${devops_service}_*.tar.gz
   \cp -rf ${devops_service}${backup_service_format}/config/* ${devops_service}/config/
@@ -515,7 +509,7 @@ check_service() {
     _error "Please check web services and try again."
   fi
 
-  CLEAR_SCREEN=false
+  clear_screen=false
 }
 
 rollback_all() {
@@ -572,12 +566,12 @@ upgrade_all() {
   sleep 10s
   start_daemon
 
-  CLEAR_SCREEN=false
+  clear_screen=false
 }
 
 configure(){
     clear
-    _info "${HEAD_INFO}" && echo
+    _info "${head_info}" && echo
 
     read -r -p "是否更新base模块?(y/n)" upgrade_base_flag
     if [[ ${upgrade_base_flag} == "y" ]]
@@ -595,17 +589,55 @@ configure(){
     fi
 
 }
+
+#确认操作信息
+confirm(){
+    clear
+    _info "${head_info}
+    ————————————确认操作信息————————————-
+    升级前版本：${original_version}
+    升级后版本：${new_version}
+    升级模块信息:
+        是否更新base模块:${upgrade_base_flag}
+        是否更新report模块:${upgrade_report_flag}
+        是否更新devops模块:${upgrade_devops_flag}
+        是否更新freight模块:${upgrade_freight_flag}
+        是否更新数据库:${upgrade_database_flag}
+    升级目录:${MODULE}
+    操作描述:${STEP_DESC}
+    ————————————————————————————————————
+    输入
+     0. 执行上述操作
+     1. 重新设置
+    ————————————————————————————————" && echo
+
+    read -p " 请输入数字 [0-1]:" num
+    case "${num}" in
+        0)
+        process
+        clear_screen="false"
+        ;;
+        1)
+        ;;
+        *)
+        clear
+        _warn ":请输入正确数字 [0-1]"
+        sleep 1s
+        confirm
+        ;;
+    esac
+}
 #======================业务函数区结束===========================
 
 #======================主流程开始===========================
 init_param
 
 while true; do
-  if [[ ${CLEAR_SCREEN} == "true" ]]; then
+  if [[ ${clear_screen} == "true" ]]; then
     clear
   fi
-  CLEAR_SCREEN="true"
-  _info "${HEAD_INFO}
+  clear_screen="true"
+  _info "${head_info}
     ———————————————请选择要执行的操作—————————————————
      1. 验证服务
      2. 回滚服务
